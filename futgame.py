@@ -39,7 +39,6 @@ def check_game():
         print("Full time")
         printsc()
         game =False
-        global game
         return True
 def printsc():
     print("Team1:", score1)
@@ -92,6 +91,7 @@ while game==True:
     for i in range(counter):
         count += 1
         if check_game() == True:
+            game=False
             break
         elif onehasball == True:
             print("Options:", options)
