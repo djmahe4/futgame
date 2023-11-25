@@ -1,5 +1,7 @@
+import json
 import random
-
+import codecs
+from newdef import print_scorecard
 form1=4,4,2
 form2=4,4,2
 
@@ -8,7 +10,17 @@ goal=[]
 miss=[]
 save=[]
 count=0
+file=codecs.open("names.json",encoding='utf-8-sig')
+teams=json.load(file)
+keys=list(teams.keys())
+team1=random.choice(keys)
+keys.remove(team1)
+team2=random.choice(keys)
+goal_scorers=[]
+players1=teams[team1]
+players2=teams[team2]
 game = True
+file.close()
 
 with open('desc.txt') as file:
     comments=file.readlines()
@@ -34,10 +46,10 @@ poss2=0
 def check_game():
     if count==45:
         print("Half time")
-        printsc()
+        print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
     elif count>90:
         print("Full time")
-        printsc()
+        print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
         game =False
         return True
 def printsc():
@@ -51,10 +63,10 @@ if ts=="t" or ts=="h":
     fall = random.choice(['h','t'])
     if ts==fall:
         onehasball = True
-        printsc()
+        print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
     else:
         onehasball = False
-        printsc()
+        print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
 
 def selection(one):
     options=[]
@@ -106,17 +118,16 @@ while game==True:
                 poss1 = 0
                 break
             elif prev == one and two != one:
-                nerves = random.choice([0, 1, 2, 3])
+                nerves = random.choice([0, 2, 3])
                 if nerves == 0:
                     print(random.choice(goal))
                     score1 += 1
+                    player=choices.index(one)
+                    goal_scorers.append({'team':f'{team1}',"player":f'{players1[player]}','time':f'{count}'})
                     onehasball = False
-                    printsc()
+                    print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
                     poss1 = 0
                     break
-                elif nerves == 1:
-                    print("possession lost!")
-                    onehasball = False
                 elif nerves == 2:
                     print(random.choice(save))
                     onehasball = True
@@ -128,8 +139,11 @@ while game==True:
             else:
                 if poss1 >= 10:
                     score1 += 1
+                    print(random.choice(goal))
+                    player = choices.index(one)
+                    goal_scorers.append({'team': f'{team1}', "player": f'{players1[player]}', 'time': f'{count}'})
                     onehasball = False
-                    printsc()
+                    print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
                     poss1 = 0
                     break
             prev = one
@@ -147,16 +161,15 @@ while game==True:
                 print("Possession gained!")
                 poss2 = 0
             elif prev == two and two != one:
-                nerves = random.choice([0, 1, 2, 3])
+                nerves = random.choice([0, 2, 3])
                 if nerves == 0:
                     print(random.choice(goal))
                     score2 += 1
+                    player = choices.index(two)
+                    goal_scorers.append({'team': f'{team2}', "player": f'{players2[player]}', 'time': f'{count}'})
                     onehasball = True
-                    printsc()
+                    print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
                     poss2 = 0
-                elif nerves == 1:
-                    print("possession gained!")
-                    onehasball = True
                 elif nerves == 2:
                     print(random.choice(save))
                     onehasball = False
@@ -167,9 +180,12 @@ while game==True:
             else:
                 if poss2 >= 10:
                     score2 += 1
+                    print(random.choice(goal))
+                    player = choices.index(two)
+                    goal_scorers.append({'team': f'{team1}', "player": f'{players2[player]}', 'time': f'{count}'})
                     twohasball = False
                     onehasball = True
-                    printsc()
+                    print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
                     poss2 = 0
             prev = two
             options = x
