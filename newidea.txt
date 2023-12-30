@@ -1,0 +1,7 @@
+I want to integrate xG and determine goal possiblity using xG and then add ball possession and shots ,shots on target ,passes stats..
+strikers->0.25 xG
+Midfielders->0.15 xG
+defenders->0.05 xG
+goalkeepers ->0.01 xG
+
+for every shot xG = (xG+0.10)*0.80
