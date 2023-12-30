@@ -1,7 +1,7 @@
 import json
 import random
 import codecs
-from newdef import print_scorecard
+from newdef import print_scorecard,determine_outcome
 form1=4,4,2
 form2=4,4,2
 
@@ -35,6 +35,20 @@ toss=input("Heads or Tails(H/T):")
 ts=toss.lower()
 
 choices = ["g","1","2","3","4","5","6","7","8","9","0"]
+xG1={"g":0.01,"1":0.05,"2":0.05,"3":0.05,"4":0.05,"5":0.15,"6":0.15,"7":0.15,"8":0.15,"9":0.25,"0":0.25}
+xG2={"g":0.01,"1":0.05,"2":0.05,"3":0.05,"4":0.05,"5":0.15,"6":0.15,"7":0.15,"8":0.15,"9":0.25,"0":0.25}
+def print_xG(xG1,xG2):
+    print(f'xG of user (wrt position):{list(xG1.values())}')
+    print(f'xG of computer (wrt position):{list(xG2.values())}')
+def defxG(key,xG,index):
+    if index==0:
+        return xG[key] + (0.01*0.8)
+    elif index in range(1,5):
+        return xG[key] + (0.05*0.8)
+    elif index in range(5,10):
+        return xG[key] + (0.15*0.8)
+    elif index in range(10,12):
+        return xG[key] + (0.25*0.8)
 options = choices
 score1 = 0
 score2 = 0
@@ -47,9 +61,13 @@ def check_game():
     if count==45:
         print("Half time")
         print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
+        print()
+        print_xG(xG1,xG2)
     elif count>90:
         print("Full time")
         print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
+        print()
+        print_xG(xG1, xG2)
         game =False
         return True
 def printsc():
@@ -111,22 +129,27 @@ while game==True:
             x = selection(one)
             two = predict(x)
             print("guess:", two)
+            player = choices.index(one)
+            ind = list(xG1.keys())[player]
             print(count, "'")
             if two == one:
                 onehasball = False
                 print("Possession lost!")
                 poss1 = 0
-                break
+                #break
             elif prev == one and two != one:
-                nerves = random.choice([0, 2, 3])
-                if nerves == 0:
+                chance=format(xG1[ind],".2f")
+                nerves = determine_outcome(int(chance[2:]))
+                if nerves ==0:
                     print(random.choice(goal))
+                    xG1[ind] = defxG(ind,xG1,player)
                     score1 += 1
-                    player=choices.index(one)
                     goal_scorers.append({'team':f'{team1}',"player":f'{players1[player]}','time':f'{count}'})
                     onehasball = False
                     print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
                     poss1 = 0
+                    print_xG(xG1,xG2)
+                    print(f'{players1[player]}({player}) has xG :{xG1[ind]}')
                     break
                 elif nerves == 2:
                     print(random.choice(save))
@@ -135,6 +158,8 @@ while game==True:
                     print(random.choice(miss))
                     print("possession lost!")
                     onehasball = False
+                xG1[ind] = defxG(ind,xG1,player)
+                print(f'{players1[player]}({player}) has xG :{xG1[ind]}')
 
             else:
                 if poss1 >= 10:
@@ -145,15 +170,23 @@ while game==True:
                     onehasball = False
                     print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
                     poss1 = 0
-                    break
+                    xG1[ind] = defxG(ind,xG1,player)
+                    print_xG(xG1,xG2)
+                    print(f'{players1[player]}({player}) has xG :{xG1[ind]}')
+                    #break
+            if onehasball==False:
+                break
             prev = one
             options = x
             poss1 += 1
-        elif onehasball == False:
+        if onehasball == False:
             two = random.choice(options)
             print("Options:", options)
             one = str(input("Enter guess:"))
             x = selection(two)
+            player = choices.index(two)
+            ind = list(xG2.keys())[player]
+            chance = format(xG2[ind], ".2f")
             print("attempt:", two)
             print(count, "'")
             if two == one:
@@ -161,15 +194,18 @@ while game==True:
                 print("Possession gained!")
                 poss2 = 0
             elif prev == two and two != one:
-                nerves = random.choice([0, 2, 3])
-                if nerves == 0:
+                nerves = determine_outcome(int(chance[2:]))
+                if nerves == 0 :
                     print(random.choice(goal))
+                    xG2[ind] = defxG(ind,xG2,player)
+                    print(f'{players2[player]}({player}) has xG :{xG2[ind]}')
                     score2 += 1
-                    player = choices.index(two)
                     goal_scorers.append({'team': f'{team2}', "player": f'{players2[player]}', 'time': f'{count}'})
                     onehasball = True
                     print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
                     poss2 = 0
+                    print_xG(xG1,xG2)
+                    break
                 elif nerves == 2:
                     print(random.choice(save))
                     onehasball = False
@@ -177,6 +213,8 @@ while game==True:
                     print(random.choice(miss))
                     print("possession gained!")
                     onehasball = True
+                xG2[ind] = defxG(ind,xG2,player)
+                print(f'{players2[player]}({player}) has xG :{xG2[ind]}')
             else:
                 if poss2 >= 10:
                     score2 += 1
@@ -187,6 +225,12 @@ while game==True:
                     onehasball = True
                     print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
                     poss2 = 0
+                    xG2[ind] = defxG(ind,xG2,player)
+                    print_xG(xG1,xG2)
+                    print(f'{players2[player]}({player}) has xG :{xG2[ind]}')
+                    #break
+            if onehasball==True:
+                break
             prev = two
             options = x
             poss2 += 1
