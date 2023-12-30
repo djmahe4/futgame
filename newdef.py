@@ -1,3 +1,25 @@
+import random
+
+def determine_outcome(xG):
+    outcomes = [0, 2, 3]  # Goal, miss, save
+    if xG < 15:
+        weights = [0.05, 0.1, 0.85]  # Bias towards misses
+    elif xG < 25:
+        weights = [0.1, 0.05, 0.85]  # Bias towards misses
+    elif xG < 50:
+        weights = [0.4, 0.2, 0.4]  # More balanced probabilities
+    elif xG < 75:
+        weights = [0.6, 0.2, 0.2]  # Favor goals
+    else:
+        weights = [0.75, 0.20, 0.05]  # Highly likely goals
+
+    return random.choices(outcomes, weights=weights, k=1)[0]
+
+# Example usage:
+player1_xG = 15
+#player1_outcome = determine_outcome(player1_xG)
+#print("Player 1 outcome:", player1_outcome)  # Output: Could be 0, 2, or 3, depending on weighted probabilities
+
 def print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball):
     # Specify the width for each section
     width = 50
@@ -20,7 +42,7 @@ def print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball):
     #print(f"\n{team2} Scorers:")
     for scorer in goal_scorers:
         if scorer['team'] == team2:
-            print(f"                {scorer['player']} - {scorer['time']}'\n")
+            print(f"{' '*width}{scorer['player']} - {scorer['time']}'\n")
     if onehasball==True:
         print("⚽")
 
