@@ -1,0 +1,13 @@
+{
+  "Real Madrid": [ "Thibaut Courtois", "David Alaba", "Éder Militão", "Ferland Mendy", "Dani Carvajal", "Luka Modrić", "Toni Kroos", "Federico Valverde", "Eduardo Camavinga", "Karim Benzema", "Vinícius Júnior" ],
+  "Manchester City": [ "Ederson", "Kyle Walker", "Rúben Dias", "Nathan Aké", "Rodri", "Kevin De Bruyne", "Bernardo Silva", "Phil Foden", "Jack Grealish", "Julián Álvarez", "Erling Haaland" ],
+  "FC Barcelona": [ "Marc-André ter Stegen", "Ronald Araújo", "Sergio Busquets", "Andreas Christensen", "Jordi Alba", "Frenkie de Jong", "Pedri", "Gavi", "Nico González", "Robert Lewandowski", "Ansu Fati" ],
+  "Bayern Munich": [ "Manuel Neuer", "Benjamin Pavard", "Dayot Upamecano", "Alphonso Davies", "Joshua Kimmich", "Leon Goretzka", "Jamal Musiala", "Serge Gnabry", "Kingsley Coman", "Harry Kane", "Thomas Muller" ],
+  "Paris Saint-Germain": [ "Gianluigi Donnarumma", "Presnel Kimpembe", "Marquinhos", "Achraf Hakimi", "Nuno Mendes", "Marco Verratti", "Gonçalo Ramos", "Danilo Pereira", "Vitinha", "Ousmane Dembélé","Kylian Mbappe" ],
+  "Liverpool": [ "Alisson Becker", "Trent Alexander-Arnold", "Joel Matip", "Virgil van Dijk", "Andrew Robertson", "Fabinho", "Jordan Henderson", "Thiago Alcântara", "Harvey Elliott", "Mohamed Salah", "Diogo Jota" ],
+  "Atlético Madrid ": [ "Jan Oblak", "José Giménez", "Stefan Savić", "Reinildo Mandava", "Mario Hermoso", "Koke", "Marcos Llorente", "Saúl Ñíguez", "Thomas Lemar", "Antoine Griezmann", "Ángel Correa" ],
+  "Chelsea": [ "Robert Sánchez", "Thiago Silva", "Benoît Badiashile", "Marc Cucurella", "Axel Disasi", "Ben Chilwell", "Reece James ", "Christopher Nkunku", "Enzo Fernández", "Cole Palmer", "Raheem Sterling" ],
+  "Tottenham Hotspur": [ "Hugo Lloris", "Eric Dier", "Cristian Romero", "Ben Davies", "Matt Doherty", "Højbjerg", "Rodrigo Bentancur", "Oliver Skipp", "Giovani Lo Celso", "Dejan Kulusevski", "Son Heung-min" ],
+  "Juventus": [ "Wojciech Szczęsny", "Leonardo Bonucci", "Danilo", "Alex Sandro", "Juan Cuadrado", "Manuel Locatelli", "Rodrigo Bentancur", "Adrien Rabiot", "Denis Zakaria", "Dusan Vlahović", "Paulo Dybala," ],
+  "Kerala Blasters": [ "Sachin Suresh", "Sandeep Singh", "Hormipam Ruivah", "Pritam Kotal", "Naocha Singh ", "Jeakson Singh", "Vibin Mohanan", "Adrián Luna", "Rahul KP", "Kwame Peprah", "Dimitrios Diamantakos" ]
+}
