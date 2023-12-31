@@ -63,6 +63,9 @@ def check_game():
         print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
         print()
         print_xG(xG1,xG2)
+        global prev, options
+        prev=None
+        options=choices
     elif count>90:
         print("Full time")
         print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
@@ -136,10 +139,11 @@ while game==True:
                 onehasball = False
                 print("Possession lost!")
                 poss1 = 0
+                prev = one
                 #break
             elif prev == one and two != one:
                 chance=format(xG1[ind],".2f")
-                nerves = determine_outcome(int(chance[2:]))
+                nerves = determine_outcome(int(chance[2:4]))
                 if nerves ==0:
                     print(random.choice(goal))
                     xG1[ind] = defxG(ind,xG1,player)
@@ -150,6 +154,8 @@ while game==True:
                     poss1 = 0
                     print_xG(xG1,xG2)
                     print(f'{players1[player]}({player}) has xG :{xG1[ind]}')
+                    prev=None
+                    options=choices
                     break
                 elif nerves == 2:
                     print(random.choice(save))
@@ -158,6 +164,7 @@ while game==True:
                     print(random.choice(miss))
                     print("possession lost!")
                     onehasball = False
+                    prev=None
                 xG1[ind] = defxG(ind,xG1,player)
                 print(f'{players1[player]}({player}) has xG :{xG1[ind]}')
 
@@ -168,11 +175,14 @@ while game==True:
                     player = choices.index(one)
                     goal_scorers.append({'team': f'{team1}', "player": f'{players1[player]}', 'time': f'{count}'})
                     onehasball = False
+                    prev=None
                     print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
                     poss1 = 0
                     xG1[ind] = defxG(ind,xG1,player)
                     print_xG(xG1,xG2)
                     print(f'{players1[player]}({player}) has xG :{xG1[ind]}')
+                    options=choices
+                    #iskickoff=True
                     #break
             if onehasball==False:
                 break
@@ -193,8 +203,9 @@ while game==True:
                 onehasball = True
                 print("Possession gained!")
                 poss2 = 0
+                prev = two
             elif prev == two and two != one:
-                nerves = determine_outcome(int(chance[2:]))
+                nerves = determine_outcome(int(chance[2:4]))
                 if nerves == 0 :
                     print(random.choice(goal))
                     xG2[ind] = defxG(ind,xG2,player)
@@ -202,9 +213,12 @@ while game==True:
                     score2 += 1
                     goal_scorers.append({'team': f'{team2}', "player": f'{players2[player]}', 'time': f'{count}'})
                     onehasball = True
+                    prev=None
                     print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
                     poss2 = 0
                     print_xG(xG1,xG2)
+                    options=choices
+                    #iskickoff=True
                     break
                 elif nerves == 2:
                     print(random.choice(save))
@@ -213,6 +227,7 @@ while game==True:
                     print(random.choice(miss))
                     print("possession gained!")
                     onehasball = True
+                    prev=None
                 xG2[ind] = defxG(ind,xG2,player)
                 print(f'{players2[player]}({player}) has xG :{xG2[ind]}')
             else:
@@ -221,13 +236,15 @@ while game==True:
                     print(random.choice(goal))
                     player = choices.index(two)
                     goal_scorers.append({'team': f'{team1}', "player": f'{players2[player]}', 'time': f'{count}'})
-                    twohasball = False
+                    #iskickoff = True
                     onehasball = True
+                    prev=None
                     print_scorecard(team1, team2, score1, score2, goal_scorers, onehasball)
                     poss2 = 0
                     xG2[ind] = defxG(ind,xG2,player)
                     print_xG(xG1,xG2)
                     print(f'{players2[player]}({player}) has xG :{xG2[ind]}')
+                    options=choices
                     #break
             if onehasball==True:
                 break
