@@ -40,6 +40,7 @@ xG2={"g":0.01,"1":0.05,"2":0.05,"3":0.05,"4":0.05,"5":0.15,"6":0.15,"7":0.15,"8"
 def print_xG(xG1,xG2):
     print(f'xG of user (wrt position):{list(xG1.values())}')
     print(f'xG of computer (wrt position):{list(xG2.values())}')
+    print()
 def defxG(key,xG,index):
     if index==0:
         return xG[key] + (0.01*0.8)
