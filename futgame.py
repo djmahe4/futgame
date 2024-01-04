@@ -46,9 +46,9 @@ def defxG(key,xG,index):
         return xG[key] + (0.01*0.8)
     elif index in range(1,5):
         return xG[key] + (0.05*0.8)
-    elif index in range(5,10):
+    elif index in range(5,9):
         return xG[key] + (0.15*0.8)
-    elif index in range(10,12):
+    elif index in range(9,11):
         return xG[key] + (0.25*0.8)
 options = choices
 score1 = 0
