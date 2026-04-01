@@ -1,10 +1,7 @@
 name: Sync OpenFootManager Develop Branch
 
 on:
-  workflow_dispatch:   # manual trigger only
-  push:
-    branches:
-      - main           # runs when you push to your repo
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,19 +14,18 @@ jobs:
       - name: Checkout your repo
         uses: actions/checkout@v4
 
-      - name: Clone OpenFootManager develop
-        run: |
-          git clone --depth 1 --branch develop https://github.com/openfootmanager/openfootmanager.git upstream
+      - name: Remove old directory
+        run: rm -rf openfootmanager
 
-      - name: Sync files
+      - name: Clone into openfootmanager directory
         run: |
-          rsync -av --delete --exclude='.git' upstream/ .
+          git clone --depth 1 --branch develop https://github.com/openfootmanager/openfootmanager.git openfootmanager
 
       - name: Commit and push
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          git add .
-          git commit -m "Sync from OpenFootManager develop branch" || echo "No changes"
+          git add openfootmanager
+          git commit -m "Update openfootmanager (develop branch)" || echo "No changes"
           git push
