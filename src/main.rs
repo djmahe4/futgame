@@ -169,18 +169,36 @@ fn show_fulltime(state: &MatchState, team1: &Team, team2: &Team) {
     println!("  {} - Yellow: {} Red: {}", team2.name, t2_yellows, t2_reds);
 }
 
+// Commentary file layout (1-based line numbers from desc.txt):
+//   Lines  1-16 → saves  (idx 0-15)
+//   Lines 17-24 → misses (idx 16-23)
+//   Lines 25-49 → goals  (idx 24+)
+const COMMENTARY_SAVES_START: usize = 0;
+const COMMENTARY_SAVES_END: usize = 15;
+const COMMENTARY_MISSES_START: usize = 16;
+const COMMENTARY_MISSES_END: usize = 23;
+const COMMENTARY_GOALS_START: usize = 24;
+
 fn get_commentary(evt: &GameEvent, commentary: &[String], rng: &mut impl Rng) -> Option<String> {
     let (start, end) = match evt {
-        GameEvent::Save { .. } => (0, 15.min(commentary.len().saturating_sub(1))),
-        GameEvent::Miss { .. } => (16, 23.min(commentary.len().saturating_sub(1))),
-        GameEvent::Goal { .. } => (24, commentary.len().saturating_sub(1)),
+        GameEvent::Save { .. } => (COMMENTARY_SAVES_START, COMMENTARY_SAVES_END.min(commentary.len().saturating_sub(1))),
+        GameEvent::Miss { .. } => (COMMENTARY_MISSES_START, COMMENTARY_MISSES_END.min(commentary.len().saturating_sub(1))),
+        GameEvent::Goal { .. } => (COMMENTARY_GOALS_START, commentary.len().saturating_sub(1)),
         _ => return None,
     };
     if start >= commentary.len() {
         return None;
     }
-    let idx = rng.gen_range(start..=end.max(start));
-    commentary.get(idx).cloned()
+    // Collect non-empty lines in the range to avoid blank commentary
+    let candidates: Vec<&String> = commentary[start..=end.max(start)]
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .collect();
+    if candidates.is_empty() {
+        return None;
+    }
+    let idx = rng.gen_range(0..candidates.len());
+    candidates.get(idx).map(|s| (*s).clone())
 }
 
 fn main() {
@@ -201,6 +219,10 @@ fn main() {
     }
 
     let team_names: Vec<String> = names_db.keys().cloned().collect();
+    if team_names.is_empty() {
+        eprintln!("{}", "Error: no teams found. Ensure names.json is in data/ or current directory.".red());
+        std::process::exit(1);
+    }
 
     let t1_name = if args.team1.is_empty() {
         println!("\nAvailable teams:");
@@ -209,7 +231,7 @@ fn main() {
         }
         let ch = prompt("Pick team 1 (number or name): ");
         if let Ok(n) = ch.parse::<usize>() {
-            team_names.get(n.saturating_sub(1)).cloned().unwrap_or_else(|| team_names.first().cloned().unwrap_or_default())
+            team_names.get(n.saturating_sub(1)).cloned().unwrap_or_else(|| team_names[0].clone())
         } else {
             ch
         }
@@ -224,7 +246,7 @@ fn main() {
         }
         let ch = prompt("Pick team 2 (number or name): ");
         if let Ok(n) = ch.parse::<usize>() {
-            team_names.get(n.saturating_sub(1)).cloned().unwrap_or_else(|| team_names.last().cloned().unwrap_or_default())
+            team_names.get(n.saturating_sub(1)).cloned().unwrap_or_else(|| team_names[team_names.len() - 1].clone())
         } else {
             ch
         }

@@ -21,7 +21,7 @@ pub enum PlayerRole {
     Striker, AdvancedForward, Poacher, TargetMan, CompleteForward, FalseNine,
     PressingForward, DeepLyingForward,
     // Extra roles
-    WideTargetMan, Raumdeuter, ShadowForward, InsidePlaymaker, FalseFulBack,
+    WideTargetMan, Raumdeuter, ShadowForward, InsidePlaymaker, FalseFullBack,
     InvertedWingBack, PressingMidfielder, HoldingMidfielder, CreativePlaymaker,
     SupportStriker, WideForward, AttackingWingBack,
 }
@@ -56,7 +56,7 @@ pub fn role_to_xt_multiplier(role: &PlayerRole) -> f32 {
         PlayerRole::BallPlayingCentreBack | PlayerRole::Libero | PlayerRole::CoverDefender => 0.65,
         PlayerRole::FullBack | PlayerRole::DefensiveFullBack => 0.6,
         PlayerRole::WingBack | PlayerRole::CompleteWingBack | PlayerRole::AttackingWingBack => 0.85,
-        PlayerRole::InvertedFullBack | PlayerRole::FalseFulBack | PlayerRole::InvertedWingBack => 0.80,
+        PlayerRole::InvertedFullBack | PlayerRole::FalseFullBack | PlayerRole::InvertedWingBack => 0.80,
         PlayerRole::DefensiveMidfielder | PlayerRole::AnchorMan | PlayerRole::HoldingMidfielder => 0.55,
         PlayerRole::HalfBack | PlayerRole::BallWinningMidfielder | PlayerRole::PressingMidfielder => 0.65,
         PlayerRole::DeepLyingPlaymaker | PlayerRole::Regista | PlayerRole::InsidePlaymaker => 0.85,

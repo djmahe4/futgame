@@ -26,25 +26,25 @@ pub fn def_xg(_pos_key: &str, current_xg: f32, index: usize) -> f32 {
 
 pub fn determine_outcome(xg: f32, rng: &mut impl Rng) -> u8 {
     let xg_int = (xg * 100.0) as u32;
-    let (goal_w, miss_w, save_w): (f32, f32, f32) = if xg_int < 15 {
-        (0.05, 0.10, 0.85)
+    // goal_w + miss_w + save_w == 1.0; saves occur when roll >= goal_w + miss_w
+    let (goal_w, miss_w): (f32, f32) = if xg_int < 15 {
+        (0.05, 0.10)
     } else if xg_int < 25 {
-        (0.10, 0.05, 0.85)
+        (0.10, 0.05)
     } else if xg_int < 50 {
-        (0.40, 0.20, 0.40)
+        (0.40, 0.20)
     } else if xg_int < 75 {
-        (0.60, 0.20, 0.20)
+        (0.60, 0.20)
     } else {
-        (0.75, 0.20, 0.05)
+        (0.75, 0.20)
     };
-    let _ = save_w; // acknowledged but outcome uses goal_w + miss_w thresholds
     let roll: f32 = rng.gen();
     if roll < goal_w {
         0
     } else if roll < goal_w + miss_w {
         3
     } else {
-        2
+        2 // save: remainder probability
     }
 }
 
@@ -141,7 +141,7 @@ mod tests {
                 _ => {}
             }
         }
-        // at xg=0.05 -> xg_int=5 -> < 15 -> goal_w=0.05, miss_w=0.10, save_w=0.85
+        // at xg=0.05 -> xg_int=5 -> < 15 -> goal_w=0.05, miss_w=0.10, save=(remainder 0.85)
         assert!(goals < misses, "goals should be less than misses at low xG");
         assert!(saves > goals, "saves should dominate at low xG");
     }

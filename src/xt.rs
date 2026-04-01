@@ -25,7 +25,8 @@ pub fn get_zone_xt(x: usize, y: usize) -> f32 {
 }
 
 pub fn xt_to_xg_modifier(xt: f32) -> f32 {
-    // Sigmoid-like mapping: 0.0..1.0 xt -> max ±0.05 modifier
+    // Sigmoid maps clamped xT (0..1) to approximately ±0.05:
+    //   sig output range ≈ 0.0 to 1.0 → (sig-0.5)*0.10 ≈ -0.05 to +0.05
     let clamped = xt.clamp(0.0, 1.0);
     let sig = 1.0 / (1.0 + (-12.0 * (clamped - 0.2)).exp());
     (sig - 0.5) * 0.10

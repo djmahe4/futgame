@@ -57,6 +57,8 @@ pub fn resolve_shot(
     let new_xg = def_xg(pos_key, current, index);
     team.xg_values.insert(pos_key.to_string(), new_xg);
 
+    // Scale xt_modifier (±0.05 range) by 0.1 so xT adds at most ±0.005 to effective xG,
+    // keeping the xT layer as an enrichment rather than a dominant factor.
     let effective_xg = new_xg + xt_modifier * 0.1;
     team.shots += 1;
     team.total_xg += effective_xg;
