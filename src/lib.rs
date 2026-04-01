@@ -1,3 +1,4 @@
+pub mod config;
 pub mod xg;
 pub mod xt;
 pub mod pitch;

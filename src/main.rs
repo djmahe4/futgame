@@ -7,6 +7,7 @@ use colored::*;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
+use futgame::config::GameConfig;
 use futgame::events::GameEvent;
 use futgame::simulation::{step_minute, MatchState};
 use futgame::tactics::{Formation, Tactic};
@@ -22,6 +23,11 @@ struct Args {
     team1: String,
     #[arg(long, default_value = "")]
     team2: String,
+    /// Seconds each turn represents on the match clock.
+    /// Default: 60 (1 turn = 1 minute, 90 turns total).
+    /// Example: --turn-duration 30 means 2 turns = 1 minute → 180 turns total.
+    #[arg(long, default_value_t = 60, value_name = "SECS")]
+    turn_duration: u32,
 }
 
 fn load_names() -> HashMap<String, Vec<String>> {
@@ -207,6 +213,9 @@ fn main() {
     let commentary = load_commentary();
     let names_db = load_names();
 
+    // Build the match configuration from CLI args
+    let config = GameConfig::with_turn_duration(args.turn_duration);
+
     println!("{}", "╔═══════════════════════════════════╗".bright_green().bold());
     println!("{}", "║       ⚽  FutGame  ⚽              ║".bright_green().bold());
     println!("{}", "║   Rust CLI Football Simulator      ║".bright_green().bold());
@@ -217,6 +226,7 @@ fn main() {
     } else {
         println!("{}", "Mode: Full (xG + xT)".green());
     }
+    println!("⏱  Turn timing: {}", config.describe().cyan());
 
     let team_names: Vec<String> = names_db.keys().cloned().collect();
     if team_names.is_empty() {
@@ -288,19 +298,29 @@ fn main() {
 
     println!("\n{}", "🏁 KICK OFF!".bright_yellow().bold());
 
-    for minute in 1u32..=90 {
+    let total_turns = config.total_turns();
+    let halftime_turn = config.halftime_turn();
+    let mut halftime_shown = false;
+    let mut prev_minute = 0u32;
+
+    for turn in 0..total_turns {
+        let minute = config.turn_to_minute(turn);
         state.minute = minute;
 
-        if minute == 46 {
+        // Half-time: show once when we first reach minute 45
+        if !halftime_shown && turn >= halftime_turn {
             show_halftime(&state, &team1, &team2);
             prompt("Press Enter for second half...");
             println!("{}", "🏁 SECOND HALF!".bright_yellow().bold());
+            halftime_shown = true;
         }
 
-        if minute % 5 == 0 {
+        // Print a minute marker whenever the displayed minute advances to a multiple of 5
+        if minute != prev_minute && minute % 5 == 0 {
             print!("{} ", format!("[{}']", minute).dimmed());
             io::stdout().flush().unwrap();
         }
+        prev_minute = minute;
 
         let is_human_turn = (human_team_is_t1 && state.team1_has_ball)
             || (!human_team_is_t1 && !state.team1_has_ball);
