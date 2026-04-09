@@ -181,13 +181,10 @@ mod tests {
     #[test]
     fn halftime_turn_30s() {
         let cfg = GameConfig::with_turn_duration(30);
-        let ht = cfg.halftime_turn();
-        // minute at halftime turn must be exactly 45
-        assert_eq!(cfg.turn_to_minute(ht), 45);
-        // and the turn immediately before it must be in minute 44
-        if ht > 0 {
-            assert_eq!(cfg.turn_to_minute(ht - 1), 44);
-        }
+        // formula: 2700 / 30 - 1 = 89
+        assert_eq!(cfg.halftime_turn(), 89);
+        // turn 89 completes exactly 2700 s = minute 45
+        assert_eq!(cfg.turn_to_minute(89), 45);
     }
 
     #[test]

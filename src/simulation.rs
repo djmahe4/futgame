@@ -36,7 +36,7 @@ impl MatchState {
             events: Vec::new(),
             poss1: 0,
             poss2: 0,
-            current_zone: (5, 3),
+            current_zone: (2, 1), // midfield central in the new 6×3 grid
             prev_pos: None,
             options: crate::xg::adjacent_positions("g").iter().map(|s| s.to_string()).collect(),
             home_advantage: 0.05,
