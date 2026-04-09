@@ -1,3 +1,4 @@
+// === UPDATED: Step 1 - rename step_minute→step_turn, probability scaling ===
 // === OpenFootManager-inspired ===
 // === Original xG Core ===
 // === xT Layer (New) ===
@@ -89,7 +90,7 @@ pub fn resolve_shot(
     }
 }
 
-pub fn step_minute(
+pub fn step_turn(
     state: &mut MatchState,
     team1: &mut Team,
     team2: &mut Team,
@@ -97,6 +98,7 @@ pub fn step_minute(
     human_guess: Option<String>,
     rng: &mut impl Rng,
     simple_mode: bool,
+    turn_duration_secs: u32,
 ) -> Vec<GameEvent> {
     let mut events: Vec<GameEvent> = Vec::new();
 
@@ -162,15 +164,19 @@ pub fn step_minute(
         team2.total_xt += xt_val;
     }
 
+    // All probabilities scaled by turn_duration_secs/60 so expected events per 90 min remain consistent.
+    let scale = turn_duration_secs as f32 / 60.0;
+
     let pos_idx = position_index(&chosen_pos);
     let is_attacking_pos = matches!(chosen_pos.as_str(), "9" | "0" | "8" | "7");
 
     if is_attacking_pos {
-        let shot_prob: f32 = match chosen_pos.as_str() {
+        let base_shot_prob: f32 = match chosen_pos.as_str() {
             "9" | "0" => 0.5,
             "8" | "7" => 0.3,
             _ => 0.2,
         };
+        let shot_prob = base_shot_prob * scale;
         let roll: f32 = rng.gen();
         if roll < shot_prob {
             // Resolve shot for the attacking team
@@ -215,8 +221,9 @@ pub fn step_minute(
             });
         }
     } else {
+        let foul_prob = 0.03 * scale;
         let foul_roll: f32 = rng.gen();
-        if foul_roll < 0.03 {
+        if foul_roll < foul_prob {
             events.push(GameEvent::TackleFoul {
                 defender: pos_idx,
                 attacker: pos_idx,

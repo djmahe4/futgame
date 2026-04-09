@@ -9,7 +9,7 @@ use rand::{Rng, SeedableRng};
 
 use futgame::config::GameConfig;
 use futgame::events::GameEvent;
-use futgame::simulation::{step_minute, MatchState};
+use futgame::simulation::{step_turn, MatchState};
 use futgame::tactics::{Formation, Tactic};
 use futgame::team::{new_team, Team};
 use futgame::xg::adjacent_positions;
@@ -228,7 +228,8 @@ fn main() {
     }
     println!("⏱  Turn timing: {}", config.describe().cyan());
 
-    let team_names: Vec<String> = names_db.keys().cloned().collect();
+    let mut team_names: Vec<String> = names_db.keys().cloned().collect();
+    team_names.sort();
     if team_names.is_empty() {
         eprintln!("{}", "Error: no teams found. Ensure names.json is in data/ or current directory.".red());
         std::process::exit(1);
@@ -307,14 +308,6 @@ fn main() {
         let minute = config.turn_to_minute(turn);
         state.minute = minute;
 
-        // Half-time: show once when we first reach minute 45
-        if !halftime_shown && turn >= halftime_turn {
-            show_halftime(&state, &team1, &team2);
-            prompt("Press Enter for second half...");
-            println!("{}", "🏁 SECOND HALF!".bright_yellow().bold());
-            halftime_shown = true;
-        }
-
         // Print a minute marker whenever the displayed minute advances to a multiple of 5
         if minute != prev_minute && minute % 5 == 0 {
             print!("{} ", format!("[{}']", minute).dimmed());
@@ -342,7 +335,15 @@ fn main() {
             (None, Some(guess))
         };
 
-        let evts = step_minute(&mut state, &mut team1, &mut team2, human_pos, human_guess, &mut rng, args.simple);
+        let evts = step_turn(&mut state, &mut team1, &mut team2, human_pos, human_guess, &mut rng, args.simple, config.turn_duration_secs);
+
+        // Half-time: show once after the turn that completes minute 45
+        if !halftime_shown && turn >= halftime_turn {
+            show_halftime(&state, &team1, &team2);
+            prompt("Press Enter for second half...");
+            println!("{}", "🏁 SECOND HALF!".bright_yellow().bold());
+            halftime_shown = true;
+        }
 
         for evt in &evts {
             if let Some(line) = get_commentary(evt, &commentary, &mut rng) {
