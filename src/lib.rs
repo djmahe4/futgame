@@ -7,3 +7,6 @@ pub mod team;
 pub mod events;
 pub mod tactics;
 pub mod simulation;
+pub mod state;
+pub mod ui;
+pub mod network;

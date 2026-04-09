@@ -7,11 +7,13 @@ use colored::*;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
-use futgame::config::GameConfig;
+use futgame::config::{Difficulty, GameConfig};
 use futgame::events::GameEvent;
+use futgame::network::NetworkMode;
 use futgame::simulation::{step_turn, MatchState};
 use futgame::tactics::{Formation, Tactic};
 use futgame::team::{new_team, Team};
+use futgame::ui::renderer::render_tactical;
 use futgame::xg::adjacent_positions;
 
 #[derive(Parser, Debug)]
@@ -28,6 +30,9 @@ struct Args {
     /// Example: --turn-duration 30 means 2 turns = 1 minute → 180 turns total.
     #[arg(long, default_value_t = 60, value_name = "SECS")]
     turn_duration: u32,
+    /// AI difficulty level: easy, medium, hard, insane (default: easy).
+    #[arg(long, default_value = "easy", value_name = "LEVEL")]
+    difficulty: String,
 }
 
 fn load_names() -> HashMap<String, Vec<String>> {
@@ -214,12 +219,27 @@ fn main() {
     let names_db = load_names();
 
     // Build the match configuration from CLI args
-    let config = GameConfig::with_turn_duration(args.turn_duration);
+    let mut config = GameConfig::with_turn_duration(args.turn_duration);
+    let difficulty = Difficulty::from_str(&args.difficulty);
+    config.difficulty = difficulty;
 
     println!("{}", "╔═══════════════════════════════════╗".bright_green().bold());
     println!("{}", "║       ⚽  FutGame  ⚽              ║".bright_green().bold());
     println!("{}", "║   Rust CLI Football Simulator      ║".bright_green().bold());
     println!("{}", "╚═══════════════════════════════════╝".bright_green().bold());
+
+    // Step 7: Game mode selection
+    println!("\n{}", "Game Mode:".cyan().bold());
+    println!("  1) Single Player");
+    println!("  2) Multiplayer (WIP)");
+    let mode_choice = prompt("Choose mode (1-2): ");
+    let _network_mode = match mode_choice.trim() {
+        "2" => {
+            println!("{}", "Multiplayer mode is coming soon! Defaulting to Single Player.".yellow());
+            NetworkMode::SinglePlayer
+        }
+        _ => NetworkMode::SinglePlayer,
+    };
 
     if args.simple {
         println!("{}", "Mode: Simple (xG only, no xT)".yellow());
@@ -227,6 +247,7 @@ fn main() {
         println!("{}", "Mode: Full (xG + xT)".green());
     }
     println!("⏱  Turn timing: {}", config.describe().cyan());
+    println!("🤖 AI Difficulty: {:?}", config.difficulty);
 
     let mut team_names: Vec<String> = names_db.keys().cloned().collect();
     team_names.sort();
@@ -335,7 +356,7 @@ fn main() {
             (None, Some(guess))
         };
 
-        let evts = step_turn(&mut state, &mut team1, &mut team2, human_pos, human_guess, &mut rng, args.simple, config.turn_duration_secs);
+        let (game_state, evts) = step_turn(&mut state, &mut team1, &mut team2, human_pos, human_guess, &mut rng, args.simple, config.turn_duration_secs, config.difficulty);
 
         // Half-time: show once after the turn that completes minute 45
         if !halftime_shown && turn >= halftime_turn {
@@ -344,6 +365,8 @@ fn main() {
             println!("{}", "🏁 SECOND HALF!".bright_yellow().bold());
             halftime_shown = true;
         }
+
+        render_tactical(&game_state);
 
         for evt in &evts {
             if let Some(line) = get_commentary(evt, &commentary, &mut rng) {

@@ -1,11 +1,14 @@
-// === UPDATED: Step 1 - rename step_minute→step_turn, probability scaling ===
+// === UPDATED: Step 5 - AI Difficulty + Role Movement Constraints ===
+// === UPDATED: Step 6 - Lightweight GameState + Tactical Rendering ===
 // === OpenFootManager-inspired ===
 // === Original xG Core ===
 // === xT Layer (New) ===
 
 use rand::Rng;
 
+use crate::config::Difficulty;
 use crate::events::{GameEvent, GoalScorer};
+use crate::state::{BallState, GameState, PlayerState, TurnEvent};
 use crate::team::Team;
 use crate::xg::{adjacent_positions, base_xg, def_xg, determine_outcome, position_index};
 use crate::xt::{get_zone_xt, position_to_zone, xt_to_xg_modifier};
@@ -44,6 +47,111 @@ impl MatchState {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Step 5 helpers
+// ---------------------------------------------------------------------------
+
+/// Maximum number of zones a player can move per turn based on their role.
+/// Strikers and Midfielders are more mobile (2); Defenders/GKs stay conservative (1).
+fn max_movement(role: &str) -> u8 {
+    match role {
+        "Striker" | "Midfielder" => 2,
+        "Defender" => 1,
+        _ => 1,
+    }
+}
+
+/// AI picks a zone to move to from `adj`, biased toward higher-xT zones
+/// based on the current difficulty level.
+fn ai_pick_move(adj: &[String], difficulty: Difficulty, rng: &mut impl Rng) -> String {
+    match difficulty {
+        Difficulty::Easy => adj[rng.gen_range(0..adj.len())].clone(),
+        Difficulty::Medium => {
+            // Slight xT bias: score = rand + 1.5 × zone_xt
+            let scores: Vec<f32> = adj.iter().map(|pos| {
+                let (zx, zy) = position_to_zone(pos, true);
+                rng.gen::<f32>() + 1.5 * get_zone_xt(zx, zy)
+            }).collect();
+            let best = scores.iter().enumerate()
+                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+                .map(|(i, _)| i).unwrap_or(0);
+            adj[best].clone()
+        }
+        Difficulty::Hard | Difficulty::Insane => {
+            // Strong xT bias: score = rand + 5.0 × zone_xt
+            let scores: Vec<f32> = adj.iter().map(|pos| {
+                let (zx, zy) = position_to_zone(pos, true);
+                rng.gen::<f32>() + 5.0 * get_zone_xt(zx, zy)
+            }).collect();
+            let best = scores.iter().enumerate()
+                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+                .map(|(i, _)| i).unwrap_or(0);
+            adj[best].clone()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Step 6 helpers
+// ---------------------------------------------------------------------------
+
+/// Build a lightweight GameState snapshot from the current match state.
+fn build_game_state(
+    match_state: &MatchState,
+    team1: &Team,
+    team2: &Team,
+    last_event: Option<TurnEvent>,
+) -> GameState {
+    let ball_zone = position_index(match_state.prev_pos.as_deref().unwrap_or("g")) as u8;
+    let mut players = Vec::with_capacity(team1.players.len() + team2.players.len());
+    for (i, p) in team1.players.iter().enumerate() {
+        players.push(PlayerState {
+            id: i,
+            name: p.name.clone(),
+            zone: position_index(&p.position_key) as u8,
+            role: format!("{:?}", p.role),
+        });
+    }
+    for (i, p) in team2.players.iter().enumerate() {
+        players.push(PlayerState {
+            id: team1.players.len() + i,
+            name: p.name.clone(),
+            zone: position_index(&p.position_key) as u8,
+            role: format!("{:?}", p.role),
+        });
+    }
+    GameState {
+        turn: match_state.minute,
+        players,
+        ball: BallState { zone: ball_zone, possessed_by: None },
+        last_event,
+    }
+}
+
+/// Derive a lightweight TurnEvent from the first significant GameEvent in a list.
+fn events_to_turn_event(events: &[GameEvent]) -> Option<TurnEvent> {
+    for e in events {
+        match e {
+            GameEvent::Goal { player, .. } =>
+                return Some(TurnEvent::Shot { player_id: *player, success: true }),
+            GameEvent::Save { .. } =>
+                return Some(TurnEvent::Shot { player_id: 0, success: false }),
+            GameEvent::Miss { player, .. } =>
+                return Some(TurnEvent::Shot { player_id: *player, success: false }),
+            GameEvent::PassSuccess { from, to, .. } =>
+                return Some(TurnEvent::Move { player_id: *to, from: *from as u8, to: *to as u8 }),
+            GameEvent::TackleFoul { attacker, .. } =>
+                return Some(TurnEvent::Foul { player_id: *attacker }),
+            _ => {}
+        }
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
+// resolve_shot
+// ---------------------------------------------------------------------------
 
 pub fn resolve_shot(
     player_idx: usize,
@@ -90,6 +198,10 @@ pub fn resolve_shot(
     }
 }
 
+// ---------------------------------------------------------------------------
+// step_turn
+// ---------------------------------------------------------------------------
+
 pub fn step_turn(
     state: &mut MatchState,
     team1: &mut Team,
@@ -99,7 +211,8 @@ pub fn step_turn(
     rng: &mut impl Rng,
     simple_mode: bool,
     turn_duration_secs: u32,
-) -> Vec<GameEvent> {
+    difficulty: Difficulty,
+) -> (GameState, Vec<GameEvent>) {
     let mut events: Vec<GameEvent> = Vec::new();
 
     // Track possession
@@ -115,34 +228,51 @@ pub fn step_turn(
     let adj_owned: Vec<String> = adj.iter().map(|s| s.to_string()).collect();
     state.options = adj_owned.clone();
 
-    // Choose where ball moves
+    // Determine role and movement range of the current ball carrier (for logging)
+    let (carrier_name, carrier_role) = {
+        let team = if state.team1_has_ball { &*team1 } else { &*team2 };
+        let p = team.player_at_pos(&current_pos);
+        (
+            p.map(|pl| pl.name.clone()).unwrap_or_else(|| "Unknown".to_string()),
+            p.map(|pl| format!("{:?}", pl.role)).unwrap_or_else(|| "Midfielder".to_string()),
+        )
+    };
+    let _move_range = max_movement(&carrier_role);
+
+    // --- Choose where ball moves ---
     let chosen_pos = if let Some(pos) = human_pos {
         if adj_owned.contains(&pos) { pos } else { adj_owned[rng.gen_range(0..adj_owned.len())].clone() }
     } else {
-        adj_owned[rng.gen_range(0..adj_owned.len())].clone()
+        ai_pick_move(&adj_owned, difficulty, rng)
     };
 
-    // Defending team guesses
-    let computer_guess = if let Some(g) = human_guess {
-        g
+    // --- Determine if defence intercepts ---
+    let intercept = if let Some(ref g) = human_guess {
+        g == &chosen_pos
     } else {
-        adj_owned[rng.gen_range(0..adj_owned.len())].clone()
+        match difficulty {
+            Difficulty::Insane => {
+                // Two independent guesses; succeed if either matches
+                let g1 = adj_owned[rng.gen_range(0..adj_owned.len())].clone();
+                let g2 = adj_owned[rng.gen_range(0..adj_owned.len())].clone();
+                g1 == chosen_pos || g2 == chosen_pos
+            }
+            _ => {
+                let g = adj_owned[rng.gen_range(0..adj_owned.len())].clone();
+                g == chosen_pos
+            }
+        }
     };
 
-    // If guess matches: turnover
-    if computer_guess == chosen_pos {
-        let new_team = if state.team1_has_ball {
-            team2.name.clone()
-        } else {
-            team1.name.clone()
-        };
+    if intercept {
+        let new_team = if state.team1_has_ball { team2.name.clone() } else { team1.name.clone() };
         events.push(GameEvent::PossessionChange { new_team });
         state.team1_has_ball = !state.team1_has_ball;
         state.prev_pos = Some("g".to_string());
-        return events;
+        return (build_game_state(state, team1, team2, None), events);
     }
 
-    // xT calculation - compute before borrowing team mutably
+    // --- xT calculation ---
     let (zx, zy) = position_to_zone(&chosen_pos, true);
     let xt_val = get_zone_xt(zx, zy);
 
@@ -164,6 +294,10 @@ pub fn step_turn(
         team2.total_xt += xt_val;
     }
 
+    // Tactical log: show which player moved and how much tactical xT boost applies
+    println!("  [xT] {} chose zone {} (tactic boost {:.2})",
+        carrier_name, chosen_pos, tactic_mult.clamp(0.5_f32, 1.5_f32));
+
     // All probabilities scaled by turn_duration_secs/60 so expected events per 90 min remain consistent.
     let scale = turn_duration_secs as f32 / 60.0;
 
@@ -179,7 +313,6 @@ pub fn step_turn(
         let shot_prob = base_shot_prob * scale;
         let roll: f32 = rng.gen();
         if roll < shot_prob {
-            // Resolve shot for the attacking team
             let evt = if state.team1_has_ball {
                 resolve_shot(pos_idx, team1, &chosen_pos, pos_idx, state.minute, rng, xt_mod)
             } else {
@@ -209,7 +342,8 @@ pub fn step_turn(
                     events.push(evt);
                     state.prev_pos = Some("g".to_string());
                     state.team1_has_ball = !state.team1_has_ball;
-                    return events;
+                    let last_evt = events_to_turn_event(&events);
+                    return (build_game_state(state, team1, team2, last_evt), events);
                 }
             }
             events.push(evt);
@@ -253,6 +387,9 @@ pub fn step_turn(
             }
             state.team1_has_ball = !state.team1_has_ball;
             state.prev_pos = Some("g".to_string());
+            // Early return to avoid overwriting prev_pos below
+            let last_evt = events_to_turn_event(&events);
+            return (build_game_state(state, team1, team2, last_evt), events);
         } else {
             events.push(GameEvent::PassSuccess {
                 from: position_index(&current_pos),
@@ -263,5 +400,6 @@ pub fn step_turn(
     }
 
     state.prev_pos = Some(chosen_pos);
-    events
+    let last_evt = events_to_turn_event(&events);
+    (build_game_state(state, team1, team2, last_evt), events)
 }

@@ -1,3 +1,26 @@
+// === UPDATED: Step 5 - AI Difficulty + Role Movement Constraints ===
+
+/// AI difficulty level — controls how smart the computer is when attacking and defending.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Difficulty {
+    Easy,
+    Medium,
+    Hard,
+    Insane,
+}
+
+impl Difficulty {
+    /// Parse a difficulty from a string (case-insensitive). Defaults to `Easy`.
+    pub fn from_str(s: &str) -> Self {
+        match s.to_ascii_lowercase().as_str() {
+            "medium" => Difficulty::Medium,
+            "hard"   => Difficulty::Hard,
+            "insane" => Difficulty::Insane,
+            _        => Difficulty::Easy,
+        }
+    }
+}
+
 /// Match configuration — controls timing granularity and optional feature flags.
 ///
 /// # Turn Duration
@@ -19,12 +42,15 @@ pub struct GameConfig {
     /// Seconds each turn represents on the match clock.
     /// Must be ≥ 1; values that don't evenly divide 60 are rounded down where needed.
     pub turn_duration_secs: u32,
+    /// AI difficulty level. Affects how the computer chooses moves and defends.
+    pub difficulty: Difficulty,
 }
 
 impl Default for GameConfig {
     fn default() -> Self {
         GameConfig {
             turn_duration_secs: 60,
+            difficulty: Difficulty::Easy,
         }
     }
 }
@@ -34,6 +60,7 @@ impl GameConfig {
     pub fn with_turn_duration(secs: u32) -> Self {
         GameConfig {
             turn_duration_secs: secs.max(1),
+            difficulty: Difficulty::Easy,
         }
     }
 
