@@ -74,25 +74,27 @@ impl GameConfig {
         minute.clamp(1, 90)
     }
 
-    /// The 0-indexed turn number of the **first turn whose minute reaches 45**
-    /// (i.e. the first turn where `turn_to_minute(t) >= 45`).
+    /// The 0-indexed turn number **after which half-time is shown** (the last turn
+    /// of the first half, i.e. the turn that completes exactly 45 minutes = 2700 s).
     ///
-    /// Derivation: `turn_to_minute(t) >= 45`
-    /// ⟺ `((t+1)*secs + 59) / 60 >= 45`  (ceiling division)
-    /// ⟺ `(t+1)*secs >= 2641`
-    /// ⟺ `t >= ceil(2641 / secs) − 1`
-    /// ⟺ `t = (2640 + secs) / secs − 1`  (integer arithmetic)
+    /// Formula: `(2700 / turn_duration_secs).saturating_sub(1)`
+    ///
+    /// | `turn_duration_secs` | `halftime_turn()` | minute at that turn |
+    /// |----------------------|-------------------|---------------------|
+    /// | 60                   | 44                | 45                  |
+    /// | 30                   | 89                | 45                  |
+    /// | 45                   | 59                | 45                  |
     ///
     /// ```
     /// use futgame::config::GameConfig;
-    /// assert_eq!(GameConfig::default().halftime_turn(), 44);          // turn 44 → minute 45
-    /// assert_eq!(GameConfig::with_turn_duration(30).halftime_turn(), 88); // turn 88 → minute 45
+    /// assert_eq!(GameConfig::default().halftime_turn(), 44);              // 2700/60 - 1
+    /// assert_eq!(GameConfig::with_turn_duration(30).halftime_turn(), 89); // 2700/30 - 1
+    /// assert_eq!(GameConfig::with_turn_duration(45).halftime_turn(), 59); // 2700/45 - 1
     /// ```
     pub fn halftime_turn(&self) -> u32 {
-        // ceil(2641 / secs) - 1  ==  (2640 + secs) / secs - 1  (integer arithmetic)
-        // 2640 = 44 × 60 s — the last second of minute 44; adding one more secs-chunk
-        // crosses into minute 45, so (2640 + secs) / secs gives ceil(2641/secs).
-        (2640 + self.turn_duration_secs) / self.turn_duration_secs - 1
+        // 2700 s = exactly 45 minutes; dividing by secs gives the number of complete
+        // turns in 45 min.  Subtract 1 to get the 0-indexed index of that last turn.
+        (2700 / self.turn_duration_secs).saturating_sub(1)
     }
 
     /// Human-readable description of the turn granularity.
