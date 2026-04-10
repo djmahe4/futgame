@@ -1,26 +1,79 @@
 {
-  "Alpha FC": [
-    "Alex Baker", "Ben Carter", "Chris Davis", "Dan Evans", "Ed Foster",
-    "Frank Green", "Greg Hill", "Hank Irwin", "Ivan James", "Jack King", "Leo Moore"
+  "Real Madrid": [
+    "Thibaut Courtois", "David Alaba", "Eder Militao", "Ferland Mendy", "Dani Carvajal",
+    "Luka Modric", "Toni Kroos", "Federico Valverde", "Eduardo Camavinga",
+    "Karim Benzema", "Vinicius Junior",
+    "Alex Rivera", "Jordan Hale", "Sam Torres", "Taylor Brooks", "Morgan Ellis",
+    "Casey Quinn", "Riley Vaughn"
   ],
-  "Bravo United": [
-    "Alan Nash", "Bob Owen", "Carl Page", "Dave Quinn", "Eric Reed",
-    "Fred Scott", "Gary Todd", "Harry Underwood", "Ian Vance", "Jake Ward", "Kyle Xavier"
+  "Manchester City": [
+    "Ederson", "Kyle Walker", "Ruben Dias", "Nathan Ake", "Rodri",
+    "Kevin De Bruyne", "Bernardo Silva", "Phil Foden", "Jack Grealish",
+    "Julian Alvarez", "Erling Haaland",
+    "Alex Rivera", "Jordan Hale", "Sam Torres", "Taylor Brooks", "Morgan Ellis",
+    "Casey Quinn", "Riley Vaughn"
   ],
-  "Charlie City": [
-    "Adam Young", "Brad Zimmerman", "Cole Adams", "Dean Brooks", "Evan Cole",
-    "Felix Dean", "Glen Ellis", "Hank Flynn", "Ivan Grant", "Joel Hart", "Kent Ingram"
+  "FC Barcelona": [
+    "Marc-Andre ter Stegen", "Ronald Araujo", "Sergio Busquets", "Andreas Christensen",
+    "Jordi Alba", "Frenkie de Jong", "Pedri", "Gavi", "Nico Gonzalez",
+    "Robert Lewandowski", "Ansu Fati",
+    "Jamie Soto", "Parker Hayes", "Drew Langley", "Alex Kim", "Jordan Patel",
+    "Taylor Morgan", "Casey Ellis"
   ],
-  "Delta Rovers": [
-    "Aaron Jones", "Blake Kent", "Craig Lewis", "Derek Mills", "Ethan Nash",
-    "Flynn Owens", "Grant Perry", "Harry Quinn", "Ian Ross", "James Shaw", "Kevin Turner"
+  "Bayern Munich": [
+    "Manuel Neuer", "Benjamin Pavard", "Dayot Upamecano", "Alphonso Davies",
+    "Joshua Kimmich", "Leon Goretzka", "Jamal Musiala", "Serge Gnabry",
+    "Kingsley Coman", "Harry Kane", "Thomas Muller",
+    "Jamie Soto", "Parker Hayes", "Drew Langley", "Alex Kim", "Jordan Patel",
+    "Taylor Morgan", "Casey Ellis"
   ],
-  "Echo Athletic": [
-    "Albert Upton", "Boris Vance", "Carl Webb", "David Ximenes", "Eric York",
-    "Frank Zane", "George Abel", "Henry Best", "Ivan Cross", "Jacob Dale", "Karl Eden"
+  "Paris Saint-Germain": [
+    "Gianluigi Donnarumma", "Presnel Kimpembe", "Marquinhos", "Achraf Hakimi",
+    "Nuno Mendes", "Marco Verratti", "Goncalo Ramos", "Danilo Pereira",
+    "Vitinha", "Ousmane Dembele", "Kylian Mbappe",
+    "Alex Rivera", "Jordan Hale", "Sam Torres", "Taylor Brooks", "Morgan Ellis",
+    "Casey Quinn", "Riley Vaughn"
   ],
-  "Foxtrot Rangers": [
-    "Liam Ford", "Mark Grant", "Neil Hart", "Owen Ives", "Paul James",
-    "Quinn King", "Ryan Lane", "Sam Moore", "Tom Nash", "Umar Owen", "Victor Page"
+  "Liverpool": [
+    "Alisson Becker", "Trent Alexander-Arnold", "Joel Matip", "Virgil van Dijk",
+    "Andrew Robertson", "Fabinho", "Jordan Henderson", "Thiago Alcantara",
+    "Harvey Elliott", "Mohamed Salah", "Diogo Jota",
+    "Jamie Soto", "Parker Hayes", "Drew Langley", "Alex Kim", "Jordan Patel",
+    "Taylor Morgan", "Casey Ellis"
+  ],
+  "Atletico Madrid": [
+    "Jan Oblak", "Jose Gimenez", "Stefan Savic", "Reinildo Mandava",
+    "Mario Hermoso", "Koke", "Marcos Llorente", "Saul Niguez",
+    "Thomas Lemar", "Antoine Griezmann", "Angel Correa",
+    "Alex Rivera", "Jordan Hale", "Sam Torres", "Taylor Brooks", "Morgan Ellis",
+    "Casey Quinn", "Riley Vaughn"
+  ],
+  "Chelsea": [
+    "Robert Sanchez", "Thiago Silva", "Benoit Badiashile", "Marc Cucurella",
+    "Axel Disasi", "Ben Chilwell", "Reece James", "Christopher Nkunku",
+    "Enzo Fernandez", "Cole Palmer", "Raheem Sterling",
+    "Jamie Soto", "Parker Hayes", "Drew Langley", "Alex Kim", "Jordan Patel",
+    "Taylor Morgan", "Casey Ellis"
+  ],
+  "Tottenham Hotspur": [
+    "Hugo Lloris", "Eric Dier", "Cristian Romero", "Ben Davies",
+    "Matt Doherty", "Hojbjerg", "Rodrigo Bentancur", "Oliver Skipp",
+    "Giovani Lo Celso", "Dejan Kulusevski", "Son Heung-min",
+    "Alex Rivera", "Jordan Hale", "Sam Torres", "Taylor Brooks", "Morgan Ellis",
+    "Casey Quinn", "Riley Vaughn"
+  ],
+  "Juventus": [
+    "Wojciech Szczesny", "Leonardo Bonucci", "Danilo", "Alex Sandro",
+    "Juan Cuadrado", "Manuel Locatelli", "Rodrigo Bentancur", "Adrien Rabiot",
+    "Denis Zakaria", "Dusan Vlahovic", "Paulo Dybala",
+    "Jamie Soto", "Parker Hayes", "Drew Langley", "Alex Kim", "Jordan Patel",
+    "Taylor Morgan", "Casey Ellis"
+  ],
+  "Kerala Blasters": [
+    "Sachin Suresh", "Sandeep Singh", "Hormipam Ruivah", "Pritam Kotal",
+    "Naocha Singh", "Jeakson Singh", "Vibin Mohanan", "Adrian Luna",
+    "Rahul KP", "Kwame Peprah", "Dimitrios Diamantakos",
+    "Alex Rivera", "Jordan Hale", "Sam Torres", "Taylor Brooks", "Morgan Ellis",
+    "Casey Quinn", "Riley Vaughn"
   ]
 }

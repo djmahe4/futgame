@@ -45,3 +45,14 @@ Expected Threat (xT) models how dangerous each zone of the pitch is. Higher xT z
 cargo build --release
 cargo test
 ```
+
+## Recent Improvements (Copilot Refactor)
+
+- Halftime logic fixed to properly include the full 45th minute before break.
+- All event probabilities now scale correctly with turn_duration_secs for balanced matches at any granularity (10s–60s).
+- Input validation loops added for moves and guesses (no more silent defaults on typos).
+- Team selection menu is now deterministic (sorted alphabetically).
+- Squads restored to original 11 starters + appended generic substitutes (18+ players per team).
+- Substitutes now correctly initialize xG values to prevent runtime errors.
+- Lightweight xT influence and tactical logging added for better coach visibility.
+- AI difficulty levels implemented (Easy to Insane with dual-guess logic on Insane).

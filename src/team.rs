@@ -32,6 +32,7 @@ pub fn new_team(
     for (i, pos_key) in positions.iter().enumerate() {
         let pname = player_names.get(i).cloned().unwrap_or_else(|| format!("Player {}", i + 1));
         let player = new_player(pname, pos_key.to_string(), i, rng);
+        // Substitutes now properly initialized with base xG to prevent missing value errors
         xg_values.insert(pos_key.to_string(), base_xg(pos_key));
         players.push(player);
     }

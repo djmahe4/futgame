@@ -344,15 +344,22 @@ fn main() {
             println!("\n{} Your ball! {} mins", "▶".green(), minute);
             println!("Current pos: {}", state.prev_pos.as_deref().unwrap_or("g").yellow());
             println!("Options: {}", adj.join(", ").cyan());
-            let chosen = prompt("Move to position: ");
-            let valid = adj.contains(&chosen.as_str());
-            let mv = if valid { chosen } else { adj[0].to_string() };
+            let mut chosen = prompt("Move to position: ");
+            while !adj.contains(&chosen.as_str()) {
+                println!("{}", "Invalid position. Please choose from the options above.".red());
+                chosen = prompt("Move to position: ");
+            }
+            let mv = chosen;
             (Some(mv), None)
         } else {
             let adj = adjacent_positions(state.prev_pos.as_deref().unwrap_or("g"));
             println!("\n{} Computer's ball! {} mins", "◀".red(), minute);
             println!("Options: {}", adj.join(", ").cyan());
-            let guess = prompt("Guess where they'll move: ");
+            let mut guess = prompt("Guess where they'll move: ");
+            while !adj.contains(&guess.as_str()) {
+                println!("{}", "Invalid position. Please guess one of the options above.".red());
+                guess = prompt("Guess where they'll move: ");
+            }
             (None, Some(guess))
         };
 
