@@ -1,3 +1,4 @@
+// === ENHANCED: Intelligent Defender Positioning + Role Interpolation + Formation Resets + Ball Tracking + Multiplayer Sync ===
 // === ENHANCED: Intelligent Defender Positioning + Role-Specific Interpolation + Formation-Aware Resets + Multiplayer Sync ===
 // === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 // === UPDATED: Step 6 - Lightweight GameState + Tactical Rendering ===
@@ -125,12 +126,12 @@ fn truncate(s: &str, max_len: usize) -> String {
 /// Render a compact per-turn movement visualization.
 ///
 /// Shows a 6-column × 3-row ASCII grid with:
-///  - `B` = ball position
+///  - `B` = ball position (floating-point position on 105×68m pitch)
 ///  - `D` = defender position (drops deep → marked in leftmost cols)
 ///  - `·` = empty zone
 /// Plus a line noting whether defenders are deep.
 pub fn render_movement_viz(
-    ball_pos_key: &str,
+    ball_world: Position,
     world_positions: &HashMap<String, Position>,
     defenders_deep: bool,
 ) {
@@ -142,6 +143,15 @@ pub fn render_movement_viz(
     // Build occupancy grid  [col][row] -> char
     let mut grid = [[' '; 3]; 6];
 
+    // Place the ball first using its floating-point world position
+    {
+        let col = ((ball_world.x / 105.0) * 5.0).round() as usize;
+        let row = ((ball_world.y / 68.0) * 2.0).round() as usize;
+        let col = col.min(5);
+        let row = row.min(2);
+        grid[col][row] = 'B';
+    }
+
     for &pk in &pos_keys {
         let wp = world_positions.get(pk).copied().unwrap_or_else(|| pos_to_world(pk));
         // Map world pos to grid col/row
@@ -149,9 +159,11 @@ pub fn render_movement_viz(
         let row = ((wp.y / 68.0) * 2.0).round() as usize;
         let col = col.min(5);
         let row = row.min(2);
-        let ch = if pk == ball_pos_key {
-            'B'
-        } else if defender_keys.contains(&pk) {
+        // Don't overwrite the ball marker
+        if grid[col][row] == 'B' {
+            continue;
+        }
+        let ch = if defender_keys.contains(&pk) {
             if grid[col][row] == ' ' { 'D' } else { 'd' }
         } else {
             if grid[col][row] == ' ' { 'p' } else { '+' }
@@ -177,6 +189,7 @@ pub fn render_movement_viz(
     println!("  └──────┴──────┴──────┴──────┴──────┴──────┘");
     println!("     c0    c1    c2  | c3    c4    c5");
     println!("    [own half]       | [attacking half]");
+    println!("  Ball: ({:.1},{:.1})m", ball_world.x, ball_world.y);
     if defenders_deep {
         println!("  ⬇  Defenders dropped deep (ball in own half)");
     } else {

@@ -1,6 +1,9 @@
+// === ENHANCED: Intelligent Defender Positioning + Role Interpolation + Formation Resets + Ball Tracking + Multiplayer Sync ===
 // === ENHANCED: Intelligent Defender Positioning + Role-Specific Interpolation + Formation-Aware Resets + Multiplayer Sync ===
 // === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 // === UPDATED: Step 6 - Lightweight GameState + Tactical Rendering ===
+
+use crate::pitch::Position;
 
 /// Lightweight per-turn snapshot of a single player's position.
 #[derive(Clone, Debug)]
@@ -18,6 +21,8 @@ pub struct PlayerState {
 pub struct BallState {
     pub zone: u8,
     pub possessed_by: Option<usize>,
+    /// Floating-point position on the 105×68m pitch.
+    pub world_pos: Position,
 }
 
 /// Lightweight summary of the most significant thing that happened this turn.

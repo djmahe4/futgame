@@ -1,3 +1,4 @@
+// === ENHANCED: Intelligent Defender Positioning + Role Interpolation + Formation Resets + Ball Tracking + Multiplayer Sync ===
 // === ENHANCED: Intelligent Defender Positioning + Role-Specific Interpolation + Formation-Aware Resets + Multiplayer Sync ===
 // === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 // === UPDATED: Step 5 - AI Difficulty + Role Movement Constraints ===
@@ -177,6 +178,8 @@ pub fn kickoff_world_positions() -> HashMap<String, Position> {
     for &pk in &["g", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"] {
         m.insert(pk.to_string(), pos_to_world(pk));
     }
+    // Ball starts at the centre circle
+    m.insert("ball".to_string(), Position { x: 52.5, y: 34.0 });
     m
 }
 
@@ -235,7 +238,10 @@ fn build_game_state(
     team2: &Team,
     last_event: Option<TurnEvent>,
 ) -> GameState {
-    let ball_zone = position_index(match_state.prev_pos.as_deref().unwrap_or("g")) as u8;
+    let cur_pos = match_state.prev_pos.as_deref().unwrap_or("g");
+    let ball_zone = position_index(cur_pos) as u8;
+    // Ball world position: use carrier's pos_to_world mapping
+    let ball_world = pos_to_world(cur_pos);
     let mut players = Vec::with_capacity(team1.players.len() + team2.players.len());
     for (i, p) in team1.players.iter().enumerate() {
         players.push(PlayerState {
@@ -256,8 +262,26 @@ fn build_game_state(
     GameState {
         turn: match_state.minute,
         players,
-        ball: BallState { zone: ball_zone, possessed_by: None },
+        ball: BallState { zone: ball_zone, possessed_by: None, world_pos: ball_world },
         last_event,
+    }
+}
+
+/// Compute the ball's new floating-point position after a player action.
+///
+/// - "pass"  → ball moves to the centre of the destination zone
+/// - "shot"  → ball moves toward the opponent goal (far right, x=105)
+/// - "dribble" → ball stays close to the player's feet (minor forward push)
+/// - anything else → ball stays with the player
+pub fn move_ball_with_action(ball: Position, player_pos: Position, action: &str) -> Position {
+    match action {
+        "pass" => player_pos, // caller supplies destination player_pos
+        "shot" => Position { x: (ball.x + 105.0) / 2.0, y: ball.y },
+        "dribble" => Position {
+            x: (ball.x + player_pos.x * 2.0) / 3.0,
+            y: (ball.y + player_pos.y * 2.0) / 3.0,
+        },
+        _ => player_pos,
     }
 }
 

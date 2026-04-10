@@ -1,3 +1,4 @@
+// === ENHANCED: Intelligent Defender Positioning + Role Interpolation + Formation Resets + Ball Tracking + Multiplayer Sync ===
 // === ENHANCED: Intelligent Defender Positioning + Role-Specific Interpolation + Formation-Aware Resets + Multiplayer Sync ===
 // === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 
@@ -19,9 +20,8 @@ pub enum NetworkMode {
 }
 
 /// Wire message exchanged between host and client each turn (newline-delimited JSON).
-/// Fields added in final enhancement:
-///  - `movements`: list of "from:to" pairs from the 'm' command
-///  - `pause`: whether the sender triggered a 'p' pause this turn
+/// Fields added in Ball Tracking enhancement:
+///  - `ball_x` / `ball_y`: floating-point ball position on 105×68 pitch
 #[derive(Debug, Clone)]
 pub struct NetMessage {
     pub turn: u32,
@@ -33,6 +33,10 @@ pub struct NetMessage {
     pub movements: Vec<String>,
     /// Whether this turn included a 'p' pause.
     pub pause: bool,
+    /// Ball floating-point x coordinate on 105×68m pitch (0.0 = not set / kickoff default).
+    pub ball_x: f32,
+    /// Ball floating-point y coordinate on 105×68m pitch (0.0 = not set / kickoff default).
+    pub ball_y: f32,
 }
 
 impl NetMessage {
@@ -47,8 +51,9 @@ impl NetMessage {
             .collect::<Vec<_>>()
             .join(",");
         format!(
-            "{{\"turn\":{},\"move_zone\":\"{}\",\"guess_zone\":{},\"movements\":[{}],\"pause\":{}}}\n",
-            self.turn, self.move_zone, guess, movements_json, self.pause
+            "{{\"turn\":{},\"move_zone\":\"{}\",\"guess_zone\":{},\"movements\":[{}],\"pause\":{},\"ball_x\":{},\"ball_y\":{}}}\n",
+            self.turn, self.move_zone, guess, movements_json, self.pause,
+            self.ball_x, self.ball_y
         )
     }
 
@@ -60,7 +65,9 @@ impl NetMessage {
         let guess_zone = extract_optional_str(line, "\"guess_zone\":");
         let movements = extract_string_array(line, "\"movements\":");
         let pause = line.contains("\"pause\":true");
-        Some(NetMessage { turn, move_zone, guess_zone, movements, pause })
+        let ball_x = extract_f32(line, "\"ball_x\":").unwrap_or(52.5);
+        let ball_y = extract_f32(line, "\"ball_y\":").unwrap_or(34.0);
+        Some(NetMessage { turn, move_zone, guess_zone, movements, pause, ball_x, ball_y })
     }
 }
 
@@ -92,6 +99,15 @@ fn extract_optional_str(s: &str, key: &str) -> Option<String> {
     let inner = rest.trim_start_matches('"');
     let end = inner.find('"')?;
     Some(inner[..end].to_string())
+}
+
+fn extract_f32(s: &str, key: &str) -> Option<f32> {
+    let start = s.find(key)? + key.len();
+    let rest = &s[start..];
+    // Accept digits, '.', '-', 'e', 'E', '+'
+    let end = rest.find(|c: char| !c.is_ascii_digit() && c != '.' && c != '-' && c != 'e' && c != 'E' && c != '+')
+        .unwrap_or(rest.len());
+    rest[..end].parse().ok()
 }
 
 /// Extract a JSON array of strings: `"key":["a","b","c"]` → vec!["a","b","c"]

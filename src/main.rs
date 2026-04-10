@@ -1,3 +1,4 @@
+// === ENHANCED: Intelligent Defender Positioning + Role Interpolation + Formation Resets + Ball Tracking + Multiplayer Sync ===
 // === ENHANCED: Intelligent Defender Positioning + Role-Specific Interpolation + Formation-Aware Resets + Multiplayer Sync ===
 // === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 
@@ -14,7 +15,7 @@ use futgame::config::{Difficulty, GameConfig};
 use futgame::events::GameEvent;
 use futgame::network::{self, NetworkMode, DEFAULT_PORT};
 use futgame::pitch::{pos_to_world, Position};
-use futgame::simulation::{kickoff_world_positions, step_turn, MatchState};
+use futgame::simulation::{kickoff_world_positions, move_ball_with_action, step_turn, MatchState};
 use futgame::tactics::{Formation, Tactic};
 use futgame::team::{new_team, Team};
 use futgame::ui::renderer::{render_insights, render_movement_viz, render_tactical};
@@ -421,7 +422,8 @@ fn main() {
 
     let mut state = MatchState::new();
     state.team1_has_ball = t1_kicks_off;
-    let human_team_is_t1 = true;
+    // Clients control team2; host (and single-player) control team1.
+    let human_team_is_t1 = !matches!(&network_mode, NetworkMode::Client(_, _));
 
     println!("\n{}", "🏁 KICK OFF!".bright_yellow().bold());
     println!("{}", "Tips: enter 'm' to reposition players | 'p' to pause & view insights (max 2)".dimmed());
@@ -430,14 +432,10 @@ fn main() {
     let halftime_turn = config.halftime_turn();
     let mut halftime_shown = false;
     let mut prev_minute = 0u32;
-    // Track floating-point world positions for each pos-key (updated on 'm' commands).
-    let mut world_positions: HashMap<String, Position> = {
-        let mut m = HashMap::new();
-        for pk in &["g","1","2","3","4","5","6","7","8","9","0"] {
-            m.insert(pk.to_string(), pos_to_world(pk));
-        }
-        m
-    };
+    // Track floating-point world positions for each pos-key (updated on 'm' commands) + ball.
+    let mut world_positions: HashMap<String, Position> = kickoff_world_positions();
+    // Ball world position — starts at centre circle, updated each turn.
+    let mut ball_world_pos: Position = Position { x: 52.5, y: 34.0 };
     let mut pauses_used: u32 = 0;
 
     for turn in 0..total_turns {
@@ -532,6 +530,8 @@ fn main() {
                                 guess_zone: None,
                                 movements: movements_enc,
                                 pause: turn_paused,
+                                ball_x: ball_world_pos.x,
+                                ball_y: ball_world_pos.y,
                             };
                             if let Err(e) = session.send(&msg) {
                                 eprintln!("Send error: {}", e);
@@ -640,6 +640,11 @@ fn main() {
         // Formation-aware reset after a goal (kick-off world positions)
         if state.reset_needed {
             world_positions = kickoff_world_positions();
+            ball_world_pos = Position { x: 52.5, y: 34.0 };
+        } else {
+            // Update ball world position based on the chosen zone
+            let carrier_pos = pos_to_world(state.prev_pos.as_deref().unwrap_or("g"));
+            ball_world_pos = move_ball_with_action(ball_world_pos, carrier_pos, "pass");
         }
 
         // Half-time: show once after the turn that completes minute 45
@@ -647,15 +652,16 @@ fn main() {
             show_halftime(&state, &team1, &team2);
             render_insights(&team1, &team2, state.score1, state.score2, 45, pauses_used, &world_positions);
             world_positions = kickoff_world_positions(); // reset for second half
+            ball_world_pos = Position { x: 52.5, y: 34.0 };
             prompt("Press Enter for second half...");
             println!("{}", "🏁 SECOND HALF!".bright_yellow().bold());
             halftime_shown = true;
         }
 
         render_tactical(&game_state);
-        // Per-turn movement visualization with defender intelligence
+        // Per-turn movement visualization with defender intelligence and ball position
         render_movement_viz(
-            state.prev_pos.as_deref().unwrap_or("g"),
+            ball_world_pos,
             &world_positions,
             state.defenders_deep,
         );
