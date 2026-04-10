@@ -229,3 +229,63 @@ Every position key maps to a real-world coordinate:
 |  0  | Striker-R   |  82.0  |  43.0  |
 
 World positions are updated when you use 'm' to reposition players, and shown in the insights overlay.
+
+## Intelligent Defender Positioning, Role Interpolation & Formation-Aware Resets
+
+### Intelligent Defender Positioning
+Defenders (CentreBack, Libero, FullBack, DefensiveMidfielder) prefer to stay in the defensive half. When the ball is in columns 0-2 (own half), the `defenders_deep` flag is set and every turn shows:
+
+```
+  ⬇  Defenders dropped deep (ball in own half)
+```
+
+The path-based interception model (Bresenham on the 6×3 grid) gives defenders in low-xT zones a higher interception chance — the lower the zone xT, the harder it is to pass through.
+
+### Role-Specific Interpolation
+All 60+ player roles have a **favourite zone** (col, row on the 6×3 grid) and a **movement speed** (0.3–1.0 zones/turn). When a player repositions via 'm' or after a kick-off/goal reset, their floating-point position moves toward the target at that role's speed:
+
+```
+GK/ShotStopper:   speed 0.3  →  col 0 (own goal area, central)
+CentreBack:        speed 0.5  →  col 1 (own half, central)
+WingBack:          speed 0.85 →  col 2 (own midfield, flank)
+BoxToBoxMidfielder: speed 0.9 →  col 3 (attacking midfield)
+Striker:           speed 0.95 →  col 5 (penalty box, central)
+```
+
+Public API in `simulation.rs`:
+```rust
+pub fn role_favourite_zone(role: &PlayerRole) -> (usize, usize)
+pub fn role_movement_speed(role: &PlayerRole) -> f32
+pub fn role_interpolate(current: Position, target: Position, role: &PlayerRole, _secs: u32) -> Position
+```
+
+### Formation-Aware Scenario Resets
+After every goal and at half-time, world positions are reset to kickoff layout via:
+```rust
+pub fn kickoff_world_positions() -> HashMap<String, Position>
+```
+This maps all 11 position keys back to their standard 105×68m coordinates. Formations only affect xT multipliers — the base 4-4-2 xG allocation (`base_xg`) is never changed.
+
+### Per-Turn Movement Visualization
+
+After every turn, a compact ASCII 6×3 grid is printed:
+```
+  ┌────────────────────────────────────┐
+  │  Pitch [own-goal → penalty box]    │
+  ├──────┬──────┬──────┬──────┬──────┬──────┤
+  │  D   │  D   │  ·   │  B   │  ·   │  ·   │ L
+  │  D   │  D   │  p   │  p   │  ·   │  ·   │ C
+  │  ·   │  ·   │  ·   │  ·   │  ·   │  ·   │ R
+  └──────┴──────┴──────┴──────┴──────┴──────┘
+     c0    c1    c2  | c3    c4    c5
+    [own half]       | [attacking half]
+  ↑  Defenders holding line (mid-block)
+  Legend: B=ball  D=defender  p=player  ·=empty
+```
+
+### Commentary for Dribble & Interception
+Dribble/interception events now get dedicated commentary lines (no desc.txt modification needed):
+
+- **Dribble success**: *"Silky skills! The defender is left for dead!"*
+- **Dribble fail**: *"Too ambitious! The defender reads it perfectly."*
+- **Interception**: *"Brilliant defensive read — the pass is cut out!"*

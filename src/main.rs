@@ -1,3 +1,4 @@
+// === ENHANCED: Intelligent Defender Positioning + Role-Specific Interpolation + Formation-Aware Resets + Multiplayer Sync ===
 // === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 
 use std::collections::HashMap;
@@ -13,10 +14,10 @@ use futgame::config::{Difficulty, GameConfig};
 use futgame::events::GameEvent;
 use futgame::network::{self, NetworkMode, DEFAULT_PORT};
 use futgame::pitch::{pos_to_world, Position};
-use futgame::simulation::{step_turn, MatchState};
+use futgame::simulation::{kickoff_world_positions, step_turn, MatchState};
 use futgame::tactics::{Formation, Tactic};
 use futgame::team::{new_team, Team};
-use futgame::ui::renderer::{render_insights, render_tactical};
+use futgame::ui::renderer::{render_insights, render_movement_viz, render_tactical};
 use futgame::xg::adjacent_positions;
 
 #[derive(Parser, Debug)]
@@ -199,7 +200,47 @@ const COMMENTARY_MISSES_START: usize = 16;
 const COMMENTARY_MISSES_END: usize = 23;
 const COMMENTARY_GOALS_START: usize = 24;
 
+/// Inline commentary for dribble and interception events.
+/// Chosen randomly so each event feels distinct without needing a desc.txt update.
+const DRIBBLE_SUCCESS_LINES: &[&str] = &[
+    "Silky skills! The defender is left for dead!",
+    "Incredible footwork — he dances past the challenge!",
+    "Nutmeg! The crowd goes wild!",
+    "You can't stop him today — pure class!",
+    "One touch, two touch — he's through on goal!",
+];
+const DRIBBLE_FAIL_LINES: &[&str] = &[
+    "Too ambitious! The defender reads it perfectly.",
+    "Dispossessed — the ball is quickly recycled.",
+    "The gamble doesn't pay off this time.",
+    "Clumsy touch — the defender steals it!",
+];
+const INTERCEPTION_LINES: &[&str] = &[
+    "Brilliant defensive read — the pass is cut out!",
+    "The defender anticipated that perfectly!",
+    "Interception! The move breaks down.",
+    "Sharp positioning — the line is held!",
+    "No way through — the backline stays disciplined.",
+];
+
 fn get_commentary(evt: &GameEvent, commentary: &[String], rng: &mut impl Rng) -> Option<String> {
+    // Handle dribble/interception with inline commentary (no desc.txt section needed)
+    match evt {
+        GameEvent::Dribble { .. } => {
+            let idx = rng.gen_range(0..DRIBBLE_SUCCESS_LINES.len());
+            return Some(DRIBBLE_SUCCESS_LINES[idx].to_string());
+        }
+        GameEvent::DribbleFail { .. } => {
+            let idx = rng.gen_range(0..DRIBBLE_FAIL_LINES.len());
+            return Some(DRIBBLE_FAIL_LINES[idx].to_string());
+        }
+        GameEvent::Interception { .. } => {
+            let idx = rng.gen_range(0..INTERCEPTION_LINES.len());
+            return Some(INTERCEPTION_LINES[idx].to_string());
+        }
+        _ => {}
+    }
+
     let (start, end) = match evt {
         GameEvent::Save { .. } => (COMMENTARY_SAVES_START, COMMENTARY_SAVES_END.min(commentary.len().saturating_sub(1))),
         GameEvent::Miss { .. } => (COMMENTARY_MISSES_START, COMMENTARY_MISSES_END.min(commentary.len().saturating_sub(1))),
@@ -596,16 +637,28 @@ fn main() {
             &movements_slice,
         );
 
+        // Formation-aware reset after a goal (kick-off world positions)
+        if state.reset_needed {
+            world_positions = kickoff_world_positions();
+        }
+
         // Half-time: show once after the turn that completes minute 45
         if !halftime_shown && turn >= halftime_turn {
             show_halftime(&state, &team1, &team2);
             render_insights(&team1, &team2, state.score1, state.score2, 45, pauses_used, &world_positions);
+            world_positions = kickoff_world_positions(); // reset for second half
             prompt("Press Enter for second half...");
             println!("{}", "🏁 SECOND HALF!".bright_yellow().bold());
             halftime_shown = true;
         }
 
         render_tactical(&game_state);
+        // Per-turn movement visualization with defender intelligence
+        render_movement_viz(
+            state.prev_pos.as_deref().unwrap_or("g"),
+            &world_positions,
+            state.defenders_deep,
+        );
 
         for evt in &evts {
             if let Some(line) = get_commentary(evt, &commentary, &mut rng) {

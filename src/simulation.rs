@@ -1,3 +1,4 @@
+// === ENHANCED: Intelligent Defender Positioning + Role-Specific Interpolation + Formation-Aware Resets + Multiplayer Sync ===
 // === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 // === UPDATED: Step 5 - AI Difficulty + Role Movement Constraints ===
 // === UPDATED: Step 6 - Lightweight GameState + Tactical Rendering ===
@@ -5,11 +6,13 @@
 // === Original xG Core ===
 // === xT Layer (New) ===
 
+use std::collections::HashMap;
 use rand::Rng;
 
 use crate::config::Difficulty;
 use crate::events::{GameEvent, GoalScorer};
-use crate::pitch::get_path_zones;
+use crate::pitch::{get_path_zones, pos_to_world, Position};
+use crate::player::PlayerRole;
 use crate::state::{BallState, GameState, PlayerState, TurnEvent};
 use crate::team::Team;
 use crate::xg::{adjacent_positions, base_xg, def_xg, determine_outcome, position_index};
@@ -29,6 +32,10 @@ pub struct MatchState {
     pub prev_pos: Option<String>,
     pub options: Vec<String>,
     pub home_advantage: f32,
+    /// True when the defending team has dropped into their own half (ball in cols 0-2).
+    pub defenders_deep: bool,
+    /// Set to true by step_turn when a goal is scored — callers should reset world positions.
+    pub reset_needed: bool,
 }
 
 impl MatchState {
@@ -46,8 +53,131 @@ impl MatchState {
             prev_pos: None,
             options: crate::xg::adjacent_positions("g").iter().map(|s| s.to_string()).collect(),
             home_advantage: 0.05,
+            defenders_deep: false,
+            reset_needed: false,
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Role-specific helpers (interpolation, favourite zones, movement speed)
+// ---------------------------------------------------------------------------
+
+/// Return the preferred (col, row) zone on the 6×3 xT grid for a given role.
+/// Used by `role_interpolate` to bias movement toward the role's natural area.
+pub fn role_favourite_zone(role: &PlayerRole) -> (usize, usize) {
+    match role {
+        PlayerRole::Goalkeeper | PlayerRole::ShotStopper
+        | PlayerRole::BallPlayingGoalkeeper | PlayerRole::SweeperKeeper => (0, 1),
+
+        PlayerRole::CentreBack | PlayerRole::NoNonsenseCentreBack
+        | PlayerRole::Stopper | PlayerRole::CoverDefender => (1, 1),
+
+        PlayerRole::BallPlayingCentreBack | PlayerRole::Libero => (1, 1),
+
+        PlayerRole::FullBack | PlayerRole::DefensiveFullBack => (1, 0),
+        PlayerRole::WingBack | PlayerRole::CompleteWingBack | PlayerRole::AttackingWingBack => (2, 0),
+        PlayerRole::InvertedFullBack | PlayerRole::FalseFullBack | PlayerRole::InvertedWingBack => (2, 1),
+
+        PlayerRole::DefensiveMidfielder | PlayerRole::AnchorMan
+        | PlayerRole::HoldingMidfielder | PlayerRole::HalfBack => (2, 1),
+        PlayerRole::BallWinningMidfielder | PlayerRole::PressingMidfielder => (2, 1),
+        PlayerRole::DeepLyingPlaymaker | PlayerRole::Regista | PlayerRole::InsidePlaymaker => (2, 1),
+
+        PlayerRole::CentralMidfielder | PlayerRole::Carrilero => (3, 1),
+        PlayerRole::BoxToBoxMidfielder | PlayerRole::RoamingPlaymaker => (3, 1),
+        PlayerRole::AdvancedPlaymaker | PlayerRole::CreativePlaymaker | PlayerRole::Mezzala => (3, 1),
+
+        PlayerRole::AttackingMidfielder | PlayerRole::Enganche | PlayerRole::Trequartista => (4, 1),
+        PlayerRole::ShadowStriker | PlayerRole::SecondStriker | PlayerRole::ShadowForward => (4, 1),
+
+        PlayerRole::Winger | PlayerRole::DefensiveWinger | PlayerRole::WideForward => (3, 0),
+        PlayerRole::InvertedWinger | PlayerRole::InsideForward | PlayerRole::WidePlaymaker => (4, 0),
+        PlayerRole::WideTargetMan | PlayerRole::Raumdeuter => (4, 0),
+
+        PlayerRole::Striker | PlayerRole::AdvancedForward | PlayerRole::CompleteForward => (5, 1),
+        PlayerRole::Poacher | PlayerRole::TargetMan | PlayerRole::SupportStriker => (5, 1),
+        PlayerRole::FalseNine | PlayerRole::DeepLyingForward => (4, 1),
+        PlayerRole::PressingForward => (4, 1),
+    }
+}
+
+/// Movement speed factor (zones per turn) for each role.
+/// Values in range 0.3–1.0; a value of 1.0 means the player can move a full zone each turn.
+pub fn role_movement_speed(role: &PlayerRole) -> f32 {
+    match role {
+        PlayerRole::Goalkeeper | PlayerRole::ShotStopper => 0.3,
+        PlayerRole::BallPlayingGoalkeeper | PlayerRole::SweeperKeeper => 0.4,
+
+        PlayerRole::CentreBack | PlayerRole::NoNonsenseCentreBack | PlayerRole::Stopper => 0.5,
+        PlayerRole::BallPlayingCentreBack | PlayerRole::CoverDefender | PlayerRole::Libero => 0.6,
+
+        PlayerRole::FullBack | PlayerRole::DefensiveFullBack => 0.7,
+        PlayerRole::WingBack | PlayerRole::CompleteWingBack | PlayerRole::AttackingWingBack => 0.85,
+        PlayerRole::InvertedFullBack | PlayerRole::FalseFullBack | PlayerRole::InvertedWingBack => 0.75,
+
+        PlayerRole::DefensiveMidfielder | PlayerRole::AnchorMan | PlayerRole::HoldingMidfielder => 0.6,
+        PlayerRole::HalfBack | PlayerRole::BallWinningMidfielder | PlayerRole::PressingMidfielder => 0.7,
+        PlayerRole::DeepLyingPlaymaker | PlayerRole::Regista | PlayerRole::InsidePlaymaker => 0.7,
+
+        PlayerRole::CentralMidfielder | PlayerRole::Carrilero => 0.8,
+        PlayerRole::BoxToBoxMidfielder | PlayerRole::RoamingPlaymaker => 0.9,
+        PlayerRole::AdvancedPlaymaker | PlayerRole::CreativePlaymaker | PlayerRole::Mezzala => 0.85,
+
+        PlayerRole::AttackingMidfielder | PlayerRole::Enganche | PlayerRole::Trequartista => 0.8,
+        PlayerRole::ShadowStriker | PlayerRole::SecondStriker | PlayerRole::ShadowForward => 0.85,
+
+        PlayerRole::Winger | PlayerRole::DefensiveWinger | PlayerRole::WideForward => 0.9,
+        PlayerRole::InvertedWinger | PlayerRole::InsideForward | PlayerRole::WidePlaymaker => 0.9,
+        PlayerRole::WideTargetMan | PlayerRole::Raumdeuter => 0.85,
+
+        PlayerRole::Striker | PlayerRole::AdvancedForward | PlayerRole::CompleteForward => 0.95,
+        PlayerRole::Poacher | PlayerRole::TargetMan => 0.85,
+        PlayerRole::SupportStriker => 0.9,
+        PlayerRole::FalseNine | PlayerRole::DeepLyingForward => 0.8,
+        PlayerRole::PressingForward => 0.9,
+    }
+}
+
+/// Move a player from `current` toward `target` at role-appropriate speed.
+/// Each turn's maximum distance is `speed × 17.5m` (one zone ≈ 17.5m on a 105m pitch).
+/// Biases final direction toward the role's favourite zone if the target is the same as current.
+pub fn role_interpolate(
+    current: Position,
+    target: Position,
+    role: &PlayerRole,
+    _turn_duration_secs: u32,
+) -> Position {
+    let speed = role_movement_speed(role);
+    let max_dist = speed * 17.5_f32; // metres per turn
+
+    let dx = target.x - current.x;
+    let dy = target.y - current.y;
+    let dist = (dx * dx + dy * dy).sqrt();
+    if dist <= 0.01 {
+        return current; // already at target
+    }
+    if dist <= max_dist {
+        return Position {
+            x: target.x.clamp(0.0, 105.0),
+            y: target.y.clamp(0.0, 68.0),
+        };
+    }
+    let scale = max_dist / dist;
+    Position {
+        x: (current.x + dx * scale).clamp(0.0, 105.0),
+        y: (current.y + dy * scale).clamp(0.0, 68.0),
+    }
+}
+
+/// Reset all player world positions to the standard kickoff layout (based on `pos_to_world`).
+/// Called by main.rs after goals and at match/half kick-off.
+pub fn kickoff_world_positions() -> HashMap<String, Position> {
+    let mut m = HashMap::new();
+    for &pk in &["g", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"] {
+        m.insert(pk.to_string(), pos_to_world(pk));
+    }
+    m
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +379,9 @@ pub fn step_turn(
         state.poss2 += 1;
     }
 
+    // Clear reset flag at the start of each turn
+    state.reset_needed = false;
+
     let current_pos = state.prev_pos.clone().unwrap_or_else(|| "g".to_string());
 
     let adj = adjacent_positions(&current_pos);
@@ -290,20 +423,20 @@ pub fn step_turn(
         let scale_pre = turn_duration_secs as f32 / 60.0;
         let dribble_chance = (player_xg * tactic_mult_pre).clamp(0.1, 0.95) * scale_pre;
         let dribble_roll: f32 = rng.gen();
-        let pos_idx_pre = position_index(&chosen_pos);
+        let current_pos_idx = position_index(&chosen_pos);
         if dribble_roll < dribble_chance {
             // Dribble success: +0.15 xT boost, bypass defender
             if state.team1_has_ball { team1.total_xt += 0.15; } else { team2.total_xt += 0.15; }
-            events.push(GameEvent::Dribble { player: pos_idx_pre, xt_gain: 0.15 });
+            events.push(GameEvent::Dribble { player: current_pos_idx, xt_gain: 0.15 });
             state.prev_pos = Some(chosen_pos.clone());
             let last_evt = events_to_turn_event(&events);
             return (build_game_state(state, team1, team2, last_evt), events);
         } else {
             // Dribble fail: possession loss + small foul chance
             let foul_roll: f32 = rng.gen();
-            events.push(GameEvent::DribbleFail { player: pos_idx_pre });
+            events.push(GameEvent::DribbleFail { player: current_pos_idx });
             if foul_roll < 0.05 * scale_pre {
-                events.push(GameEvent::TackleFoul { defender: pos_idx_pre, attacker: pos_idx_pre });
+                events.push(GameEvent::TackleFoul { defender: current_pos_idx, attacker: current_pos_idx });
             }
             events.push(GameEvent::PossessionChange {
                 new_team: if state.team1_has_ball { team2.name.clone() } else { team1.name.clone() },
@@ -345,6 +478,9 @@ pub fn step_turn(
     let (zx, zy) = position_to_zone(&chosen_pos, true);
     let xt_val = get_zone_xt(zx, zy);
 
+    // Defenders drop deep when the ball is in the own half (cols 0-2)
+    state.defenders_deep = zx <= 2;
+
     let tactic_mult = if state.team1_has_ball {
         tactic_xt_multiplier(&team1.tactic)
     } else {
@@ -365,7 +501,7 @@ pub fn step_turn(
 
     // Tactical log: show which player moved and how much tactical xT boost applies
     println!("  [xT] {} chose zone {} (tactic boost {:.2})",
-        carrier_name, chosen_pos, tactic_mult.clamp(0.5_f32, 1.5_f32));
+        carrier_name, chosen_pos, tactic_mult);
 
     // All probabilities scaled by turn_duration_secs/60 so expected events per 90 min remain consistent.
     let scale = turn_duration_secs as f32 / 60.0;
@@ -446,6 +582,7 @@ pub fn step_turn(
                     events.push(evt);
                     state.prev_pos = Some("g".to_string());
                     state.team1_has_ball = !state.team1_has_ball;
+                    state.reset_needed = true; // signal caller to reset world positions
                     let last_evt = events_to_turn_event(&events);
                     return (build_game_state(state, team1, team2, last_evt), events);
                 }

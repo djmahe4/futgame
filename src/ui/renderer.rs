@@ -1,3 +1,4 @@
+// === ENHANCED: Intelligent Defender Positioning + Role-Specific Interpolation + Formation-Aware Resets + Multiplayer Sync ===
 // === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 // === UPDATED: Step 6 - Lightweight GameState + Tactical Rendering ===
 
@@ -71,32 +72,34 @@ pub fn render_insights(
     println!();
 
     // --- Player position table ---
-    println!("  ┌──────┬────────────────────────┬───────────────┬──────────────┬────────────────────┐");
-    println!("  │ Pos  │ Name                   │ xG (cumul.)   │ xT (cumul.)  │ World pos (105×68) │");
-    println!("  ├──────┼────────────────────────┼───────────────┼──────────────┼────────────────────┤");
+    println!("  ┌──────┬────────────────────────┬───────────────┬──────────────────────┬────────────────────┐");
+    println!("  │ Pos  │ Name                   │ xG pos (cum.) │ Team xT avg (per pl) │ World pos (105×68) │");
+    println!("  ├──────┼────────────────────────┼───────────────┼──────────────────────┼────────────────────┤");
 
     let pos_keys = ["g","1","2","3","4","5","6","7","8","9","0"];
+    let t1_xt_avg = team1.total_xt / 11.0_f32.max(1.0);
+    let t2_xt_avg = team2.total_xt / 11.0_f32.max(1.0);
 
     for &pk in &pos_keys {
         // Team 1 player at this position
         if let Some(p) = team1.player_at_pos(pk) {
             let xg_val = team1.xg_values.get(pk).copied().unwrap_or(0.0);
             let wp = world_positions.get(pk).copied().unwrap_or_else(|| pos_to_world(pk));
-            println!("  │ {:4} │ {:22} │ {:13.4} │ {:12.4} │ ({:5.1},{:5.1})m      │",
-                pk, truncate(&p.name, 22), xg_val, team1.total_xt / 11.0_f32.max(1.0), wp.x, wp.y);
+            println!("  │ {:4} │ {:22} │ {:13.4} │ {:20.4} │ ({:5.1},{:5.1})m      │",
+                pk, truncate(&p.name, 22), xg_val, t1_xt_avg, wp.x, wp.y);
         }
     }
-    println!("  ├──────┴────────────────────────┴───────────────┴──────────────┴────────────────────┤");
+    println!("  ├──────┴────────────────────────┴───────────────┴──────────────────────┴────────────────────┤");
     println!("  │  Team 2: {}", team2.name);
     for &pk in &pos_keys {
         if let Some(p) = team2.player_at_pos(pk) {
             let xg_val = team2.xg_values.get(pk).copied().unwrap_or(0.0);
             let wp = world_positions.get(pk).copied().unwrap_or_else(|| pos_to_world(pk));
-            println!("  │ {:4} │ {:22} │ {:13.4} │ {:12.4} │ ({:5.1},{:5.1})m      │",
-                pk, truncate(&p.name, 22), xg_val, team2.total_xt / 11.0_f32.max(1.0), wp.x, wp.y);
+            println!("  │ {:4} │ {:22} │ {:13.4} │ {:20.4} │ ({:5.1},{:5.1})m      │",
+                pk, truncate(&p.name, 22), xg_val, t2_xt_avg, wp.x, wp.y);
         }
     }
-    println!("  └──────────────────────────────────────────────────────────────────────────────────────┘");
+    println!("  └────────────────────────────────────────────────────────────────────────────────────────────┘");
     println!();
 }
 
@@ -117,4 +120,67 @@ fn truncate(s: &str, max_len: usize) -> String {
     } else {
         format!("{}…", &s[..max_len.saturating_sub(1)])
     }
+}
+
+/// Render a compact per-turn movement visualization.
+///
+/// Shows a 6-column × 3-row ASCII grid with:
+///  - `B` = ball position
+///  - `D` = defender position (drops deep → marked in leftmost cols)
+///  - `·` = empty zone
+/// Plus a line noting whether defenders are deep.
+pub fn render_movement_viz(
+    ball_pos_key: &str,
+    world_positions: &HashMap<String, Position>,
+    defenders_deep: bool,
+) {
+    // Map each pos_key to its (col, row) in the 6×3 grid.
+    let pos_keys = ["g", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+    // Defender position keys (indices 0-4 in 4-4-2)
+    let defender_keys: &[&str] = &["g", "1", "2", "3", "4"];
+
+    // Build occupancy grid  [col][row] -> char
+    let mut grid = [[' '; 3]; 6];
+
+    for &pk in &pos_keys {
+        let wp = world_positions.get(pk).copied().unwrap_or_else(|| pos_to_world(pk));
+        // Map world pos to grid col/row
+        let col = ((wp.x / 105.0) * 5.0).round() as usize;
+        let row = ((wp.y / 68.0) * 2.0).round() as usize;
+        let col = col.min(5);
+        let row = row.min(2);
+        let ch = if pk == ball_pos_key {
+            'B'
+        } else if defender_keys.contains(&pk) {
+            if grid[col][row] == ' ' { 'D' } else { 'd' }
+        } else {
+            if grid[col][row] == ' ' { 'p' } else { '+' }
+        };
+        if grid[col][row] == ' ' {
+            grid[col][row] = ch;
+        }
+    }
+
+    // Print grid header
+    println!("  ┌────────────────────────────────────┐");
+    println!("  │  Pitch [own-goal → penalty box]    │");
+    println!("  ├──────┬──────┬──────┬──────┬──────┬──────┤");
+    let row_labels = ["L", "C", "R"];
+    for row in 0..3usize {
+        print!("  │");
+        for col in 0..6usize {
+            let ch = if grid[col][row] == ' ' { '·' } else { grid[col][row] };
+            print!("  {}   │", ch);
+        }
+        println!(" {}", row_labels[row]);
+    }
+    println!("  └──────┴──────┴──────┴──────┴──────┴──────┘");
+    println!("     c0    c1    c2  | c3    c4    c5");
+    println!("    [own half]       | [attacking half]");
+    if defenders_deep {
+        println!("  ⬇  Defenders dropped deep (ball in own half)");
+    } else {
+        println!("  ↑  Defenders holding line (mid-block)");
+    }
+    println!("  Legend: B=ball  D=defender  p=player  ·=empty");
 }
