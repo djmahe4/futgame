@@ -117,7 +117,6 @@ impl GameConfig {
     /// assert_eq!(GameConfig::default().halftime_turn(), 44);              // 2700/60 - 1
     /// assert_eq!(GameConfig::with_turn_duration(30).halftime_turn(), 89); // 2700/30 - 1
     /// assert_eq!(GameConfig::with_turn_duration(45).halftime_turn(), 59); // 2700/45 - 1
-    /// ```
     pub fn halftime_turn(&self) -> u32 {
         // 2700 s = exactly 45 minutes; dividing by secs gives the number of complete
         // turns in 45 min.  Subtract 1 to get the 0-indexed index of that last turn.
