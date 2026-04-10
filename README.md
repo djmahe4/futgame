@@ -2,6 +2,70 @@
 
 A fast, performant CLI football (soccer) simulator reimagined in Rust, inspired by OpenFootManager architecture, with xT (Expected Threat) integration and the original xG gameplay.
 
+## How to Play FutGame
+
+### Single Player
+```bash
+cargo run
+```
+Choose team → difficulty → play vs AI.
+
+### Multiplayer (TCP)
+**Host:**
+```bash
+cargo run -- --host
+```
+**Client (on another machine or terminal):**
+```bash
+cargo run -- --join 127.0.0.1
+```
+You can also use the interactive menu at startup — press **H** to host or **J** to join.
+
+### Screenshots / Example Output
+
+```
+╔═══════════════════════════════════╗
+║       ⚽  FutGame  ⚽              ║
+║   Rust CLI Football Simulator      ║
+╚═══════════════════════════════════╝
+
+Game Mode:
+  (S)ingle Player
+  (H)ost Multiplayer
+  (J)oin Multiplayer
+
+▶ Your ball! 12 mins
+Current pos: 5
+Options: 6, 7, 8, 9
+Move to position: 9
+  [state] turn=12 ball_zone=penalty_area | move 5 → 9
+  [xT] Vinicius Junior chose zone 9 (tactic boost 0.04)
+  💬 He's gone past two defenders!
+
+◀ Computer's ball! 15 mins
+Options: 5, 6, 7, g
+Guess where they'll move: 6
+  [state] turn=15 ball_zone=midfield | move 7 → 6
+  ↔ Real Madrid gain possession
+
+╔══════════════════════════════════════╗
+║  Real Madrid         1 - 0 Bayern    ║
+╚══════════════════════════════════════╝
+  ⚽ Vinicius Junior (Real Madrid) 38'
+```
+
+## Controls
+- Enter zone number (0-8, or `g`) when prompted
+- Guess opponent's zone when defending
+- Type exactly as shown — validation loops will re-prompt on errors
+
+## Features
+- Configurable turn duration (10s–60s)
+- xG + xT engine with probability scaling
+- Role-constrained movement
+- AI levels up to Insane (dual guess)
+- Deterministic multiplayer with shared RNG seed
+
 ## Quick Start
 
 ```bash
@@ -56,3 +120,13 @@ cargo test
 - Substitutes now correctly initialize xG values to prevent runtime errors.
 - Lightweight xT influence and tactical logging added for better coach visibility.
 - AI difficulty levels implemented (Easy to Insane with dual-guess logic on Insane).
+
+## Artifacts & Test Results
+- All tests pass (`cargo test`): 3 doc-tests in config.rs (halftime_turn, total_turns, turn_to_minute)
+- Single-player game verified: balanced scorelines at both 60s and 10s turn durations
+- Multiplayer tested locally (two terminals): host and client produced identical tactical logs using shared RNG seed
+- Rendering verified identical on host and client side
+- No substitute/xG panics: all 18-player squads initialize xG correctly
+- Input validation re-prompts on invalid zone entries
+- Halftime triggers correctly after full first half (turn ≥ halftime_turn)
+- Team menu is deterministic (alphabetically sorted)

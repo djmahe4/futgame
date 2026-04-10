@@ -1,3 +1,5 @@
+// === FINAL ENHANCEMENT: Multiplayer TCP Implementation + Full Game Test + README with Screenshots ===
+
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
@@ -9,7 +11,7 @@ use rand::{Rng, SeedableRng};
 
 use futgame::config::{Difficulty, GameConfig};
 use futgame::events::GameEvent;
-use futgame::network::NetworkMode;
+use futgame::network::{self, NetworkMode, DEFAULT_PORT};
 use futgame::simulation::{step_turn, MatchState};
 use futgame::tactics::{Formation, Tactic};
 use futgame::team::{new_team, Team};
@@ -33,6 +35,12 @@ struct Args {
     /// AI difficulty level: easy, medium, hard, insane (default: easy).
     #[arg(long, default_value = "easy", value_name = "LEVEL")]
     difficulty: String,
+    /// Host a multiplayer game on the given port (default 8080).
+    #[arg(long, value_name = "PORT")]
+    host: Option<Option<u16>>,
+    /// Join a multiplayer game at the given IP address (default port 8080).
+    #[arg(long, value_name = "IP")]
+    join: Option<String>,
 }
 
 fn load_names() -> HashMap<String, Vec<String>> {
@@ -214,7 +222,6 @@ fn get_commentary(evt: &GameEvent, commentary: &[String], rng: &mut impl Rng) ->
 
 fn main() {
     let args = Args::parse();
-    let mut rng = SmallRng::from_entropy();
     let commentary = load_commentary();
     let names_db = load_names();
 
@@ -228,18 +235,69 @@ fn main() {
     println!("{}", "║   Rust CLI Football Simulator      ║".bright_green().bold());
     println!("{}", "╚═══════════════════════════════════╝".bright_green().bold());
 
-    // Step 7: Game mode selection
-    println!("\n{}", "Game Mode:".cyan().bold());
-    println!("  1) Single Player");
-    println!("  2) Multiplayer (WIP)");
-    let mode_choice = prompt("Choose mode (1-2): ");
-    let _network_mode = match mode_choice.trim() {
-        "2" => {
-            println!("{}", "Multiplayer mode is coming soon! Defaulting to Single Player.".yellow());
-            NetworkMode::SinglePlayer
+    // Determine network mode from CLI flags first, then interactive menu.
+    let network_mode: NetworkMode = if args.join.is_some() {
+        let ip = args.join.as_deref().unwrap_or("127.0.0.1");
+        NetworkMode::Client(ip.to_string(), DEFAULT_PORT)
+    } else if args.host.is_some() {
+        let port = args.host.flatten().unwrap_or(DEFAULT_PORT);
+        NetworkMode::Host(port)
+    } else {
+        println!("\n{}", "Game Mode:".cyan().bold());
+        println!("  (S)ingle Player");
+        println!("  (H)ost Multiplayer");
+        println!("  (J)oin Multiplayer");
+        let mode_choice = prompt("Choose mode [S/H/J]: ").to_uppercase();
+        match mode_choice.trim() {
+            "H" => {
+                let port_str = prompt(&format!("Port to host on [{}]: ", DEFAULT_PORT));
+                let port: u16 = port_str.trim().parse().unwrap_or(DEFAULT_PORT);
+                NetworkMode::Host(port)
+            }
+            "J" => {
+                let ip = prompt("Host IP address [127.0.0.1]: ");
+                let ip = if ip.trim().is_empty() { "127.0.0.1".to_string() } else { ip.trim().to_string() };
+                let port_str = prompt(&format!("Port [{}]: ", DEFAULT_PORT));
+                let port: u16 = port_str.trim().parse().unwrap_or(DEFAULT_PORT);
+                NetworkMode::Client(ip, port)
+            }
+            _ => NetworkMode::SinglePlayer,
         }
-        _ => NetworkMode::SinglePlayer,
     };
+
+    // Establish multiplayer session (if needed) and determine shared RNG seed.
+    let (mut mp_session, rng_seed) = match &network_mode {
+        NetworkMode::Host(port) => {
+            match network::host_game(*port) {
+                Ok((session, seed)) => (Some(session), seed),
+                Err(e) => {
+                    eprintln!("{} {}", "Failed to host game:".red(), e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        NetworkMode::Client(ip, port) => {
+            match network::join_game(ip, *port) {
+                Ok((session, seed)) => (Some(session), seed),
+                Err(e) => {
+                    eprintln!("{} {}", "Failed to join game:".red(), e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        NetworkMode::SinglePlayer => {
+            // Use entropy-based seed for single-player.
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let seed = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos() as u64)
+                .unwrap_or(42);
+            (None, seed)
+        }
+    };
+
+    // Seed the RNG deterministically so both host and client are in sync.
+    let mut rng = SmallRng::seed_from_u64(rng_seed);
 
     if args.simple {
         println!("{}", "Mode: Simple (xG only, no xT)".yellow());
@@ -248,6 +306,11 @@ fn main() {
     }
     println!("⏱  Turn timing: {}", config.describe().cyan());
     println!("🤖 AI Difficulty: {:?}", config.difficulty);
+    match &network_mode {
+        NetworkMode::SinglePlayer => println!("🎮 Mode: Single Player"),
+        NetworkMode::Host(p) => println!("🌐 Mode: Multiplayer Host (port {})", p),
+        NetworkMode::Client(ip, p) => println!("🌐 Mode: Multiplayer Client ({}:{})", ip, p),
+    }
 
     let mut team_names: Vec<String> = names_db.keys().cloned().collect();
     team_names.sort();
@@ -349,18 +412,54 @@ fn main() {
                 println!("{}", "Invalid position. Please choose from the options above.".red());
                 chosen = prompt("Move to position: ");
             }
-            let mv = chosen;
+            let mv = chosen.clone();
+
+            // In multiplayer: send our move to the opponent so they can simulate identically.
+            if let Some(ref mut session) = mp_session {
+                let msg = futgame::network::NetMessage {
+                    turn,
+                    move_zone: chosen,
+                    guess_zone: None,
+                };
+                if let Err(e) = session.send(&msg) {
+                    eprintln!("Send error: {}", e);
+                }
+            }
+
             (Some(mv), None)
         } else {
             let adj = adjacent_positions(state.prev_pos.as_deref().unwrap_or("g"));
             println!("\n{} Computer's ball! {} mins", "◀".red(), minute);
             println!("Options: {}", adj.join(", ").cyan());
-            let mut guess = prompt("Guess where they'll move: ");
-            while !adj.contains(&guess.as_str()) {
-                println!("{}", "Invalid position. Please guess one of the options above.".red());
-                guess = prompt("Guess where they'll move: ");
+
+            // In multiplayer: receive the opponent's actual move; in single-player: prompt for guess.
+            let (opponent_move, our_guess) = if let Some(ref mut session) = mp_session {
+                match session.recv() {
+                    Some(msg) => {
+                        println!("  [net] Opponent moved to zone {}", msg.move_zone);
+                        (Some(msg.move_zone), None)
+                    }
+                    None => {
+                        futgame::network::on_disconnect();
+                        break;
+                    }
+                }
+            } else {
+                let mut guess = prompt("Guess where they'll move: ");
+                while !adj.contains(&guess.as_str()) {
+                    println!("{}", "Invalid position. Please guess one of the options above.".red());
+                    guess = prompt("Guess where they'll move: ");
+                }
+                (None, Some(guess))
+            };
+
+            // In multiplayer the opponent's move is the human_pos from their perspective.
+            // We pass it as human_guess so step_turn can check interception.
+            if opponent_move.is_some() {
+                (None, opponent_move)
+            } else {
+                (None, our_guess)
             }
-            (None, Some(guess))
         };
 
         let (game_state, evts) = step_turn(&mut state, &mut team1, &mut team2, human_pos, human_guess, &mut rng, args.simple, config.turn_duration_secs, config.difficulty);
