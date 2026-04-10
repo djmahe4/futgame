@@ -1,3 +1,4 @@
+// === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 // === UPDATED: Step 6 - Lightweight GameState + Tactical Rendering ===
 
 /// Lightweight per-turn snapshot of a single player's position.
@@ -24,6 +25,8 @@ pub enum TurnEvent {
     Move { player_id: usize, from: u8, to: u8 },
     Shot { player_id: usize, success: bool },
     Foul { player_id: usize },
+    Dribble { player_id: usize, success: bool },
+    Interception { defender_id: usize },
 }
 
 /// Full lightweight snapshot of the game after one turn resolves.

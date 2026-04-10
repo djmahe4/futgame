@@ -1,4 +1,4 @@
-// === FINAL ENHANCEMENT: Multiplayer TCP Implementation + Full Game Test + README with Screenshots ===
+// === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
@@ -18,6 +18,9 @@ pub enum NetworkMode {
 }
 
 /// Wire message exchanged between host and client each turn (newline-delimited JSON).
+/// Fields added in final enhancement:
+///  - `movements`: list of "from:to" pairs from the 'm' command
+///  - `pause`: whether the sender triggered a 'p' pause this turn
 #[derive(Debug, Clone)]
 pub struct NetMessage {
     pub turn: u32,
@@ -25,6 +28,10 @@ pub struct NetMessage {
     pub move_zone: String,
     /// Zone guessed by the local player for the opponent's move (if defending).
     pub guess_zone: Option<String>,
+    /// Player repositioning commands (from_pos:to_pos pairs) from the 'm' command.
+    pub movements: Vec<String>,
+    /// Whether this turn included a 'p' pause.
+    pub pause: bool,
 }
 
 impl NetMessage {
@@ -34,9 +41,13 @@ impl NetMessage {
             Some(g) => format!("\"{}\"", g),
             None => "null".to_string(),
         };
+        let movements_json = self.movements.iter()
+            .map(|m| format!("\"{}\"", m))
+            .collect::<Vec<_>>()
+            .join(",");
         format!(
-            "{{\"turn\":{},\"move_zone\":\"{}\",\"guess_zone\":{}}}\n",
-            self.turn, self.move_zone, guess
+            "{{\"turn\":{},\"move_zone\":\"{}\",\"guess_zone\":{},\"movements\":[{}],\"pause\":{}}}\n",
+            self.turn, self.move_zone, guess, movements_json, self.pause
         )
     }
 
@@ -46,7 +57,9 @@ impl NetMessage {
         let turn = extract_u32(line, "\"turn\":")?;
         let move_zone = extract_str(line, "\"move_zone\":\"")?;
         let guess_zone = extract_optional_str(line, "\"guess_zone\":");
-        Some(NetMessage { turn, move_zone, guess_zone })
+        let movements = extract_string_array(line, "\"movements\":");
+        let pause = line.contains("\"pause\":true");
+        Some(NetMessage { turn, move_zone, guess_zone, movements, pause })
     }
 }
 
@@ -78,6 +91,24 @@ fn extract_optional_str(s: &str, key: &str) -> Option<String> {
     let inner = rest.trim_start_matches('"');
     let end = inner.find('"')?;
     Some(inner[..end].to_string())
+}
+
+/// Extract a JSON array of strings: `"key":["a","b","c"]` → vec!["a","b","c"]
+fn extract_string_array(s: &str, key: &str) -> Vec<String> {
+    let start = match s.find(key) {
+        Some(i) => i + key.len(),
+        None => return Vec::new(),
+    };
+    let rest = s[start..].trim_start();
+    if !rest.starts_with('[') { return Vec::new(); }
+    let end = rest.find(']').unwrap_or(rest.len());
+    let inner = &rest[1..end];
+    inner.split(',')
+        .filter_map(|item| {
+            let t = item.trim().trim_matches('"');
+            if t.is_empty() { None } else { Some(t.to_string()) }
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------

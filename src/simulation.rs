@@ -1,3 +1,4 @@
+// === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 // === UPDATED: Step 5 - AI Difficulty + Role Movement Constraints ===
 // === UPDATED: Step 6 - Lightweight GameState + Tactical Rendering ===
 // === OpenFootManager-inspired ===
@@ -8,6 +9,7 @@ use rand::Rng;
 
 use crate::config::Difficulty;
 use crate::events::{GameEvent, GoalScorer};
+use crate::pitch::get_path_zones;
 use crate::state::{BallState, GameState, PlayerState, TurnEvent};
 use crate::team::Team;
 use crate::xg::{adjacent_positions, base_xg, def_xg, determine_outcome, position_index};
@@ -143,6 +145,12 @@ fn events_to_turn_event(events: &[GameEvent]) -> Option<TurnEvent> {
                 return Some(TurnEvent::Move { player_id: *to, from: *from as u8, to: *to as u8 }),
             GameEvent::TackleFoul { attacker, .. } =>
                 return Some(TurnEvent::Foul { player_id: *attacker }),
+            GameEvent::Dribble { player, .. } =>
+                return Some(TurnEvent::Dribble { player_id: *player, success: true }),
+            GameEvent::DribbleFail { player } =>
+                return Some(TurnEvent::Dribble { player_id: *player, success: false }),
+            GameEvent::Interception { defender, .. } =>
+                return Some(TurnEvent::Interception { defender_id: *defender }),
             _ => {}
         }
     }
@@ -202,6 +210,8 @@ pub fn resolve_shot(
 // step_turn
 // ---------------------------------------------------------------------------
 
+/// `player_movements`: list of (from_pos_key, to_pos_key) repositioning choices made via
+/// the 'm' command.  Each entry gives a small xT boost if the target zone has higher xT.
 pub fn step_turn(
     state: &mut MatchState,
     team1: &mut Team,
@@ -212,8 +222,25 @@ pub fn step_turn(
     simple_mode: bool,
     turn_duration_secs: u32,
     difficulty: Difficulty,
+    player_movements: &[(String, String)],
 ) -> (GameState, Vec<GameEvent>) {
     let mut events: Vec<GameEvent> = Vec::new();
+
+    // Apply xT boosts from 'm' movements (role-constrained repositioning).
+    for (from_pos, to_pos) in player_movements {
+        let (fx, fy) = position_to_zone(from_pos, true);
+        let (tx, ty) = position_to_zone(to_pos, true);
+        let from_xt = get_zone_xt(fx, fy);
+        let to_xt   = get_zone_xt(tx, ty);
+        if to_xt > from_xt {
+            let boost = (to_xt - from_xt) * 0.5; // partial boost for movement
+            if state.team1_has_ball {
+                team1.total_xt += boost;
+            } else {
+                team2.total_xt += boost;
+            }
+        }
+    }
 
     // Track possession
     if state.team1_has_ball {
@@ -246,7 +273,49 @@ pub fn step_turn(
         ai_pick_move(&adj_owned, difficulty, rng)
     };
 
-    // --- Determine if defence intercepts ---
+    // -----------------------------------------------------------------------
+    // Dribble check: player chose to stay at the same position (same-pos trigger)
+    // -----------------------------------------------------------------------
+    if chosen_pos == current_pos {
+        let player_xg = if state.team1_has_ball {
+            *team1.xg_values.get(&chosen_pos).unwrap_or(&base_xg(&chosen_pos))
+        } else {
+            *team2.xg_values.get(&chosen_pos).unwrap_or(&base_xg(&chosen_pos))
+        };
+        let tactic_mult_pre = if state.team1_has_ball {
+            tactic_xt_multiplier(&team1.tactic)
+        } else {
+            tactic_xt_multiplier(&team2.tactic)
+        };
+        let scale_pre = turn_duration_secs as f32 / 60.0;
+        let dribble_chance = (player_xg * tactic_mult_pre).clamp(0.1, 0.95) * scale_pre;
+        let dribble_roll: f32 = rng.gen();
+        let pos_idx_pre = position_index(&chosen_pos);
+        if dribble_roll < dribble_chance {
+            // Dribble success: +0.15 xT boost, bypass defender
+            if state.team1_has_ball { team1.total_xt += 0.15; } else { team2.total_xt += 0.15; }
+            events.push(GameEvent::Dribble { player: pos_idx_pre, xt_gain: 0.15 });
+            state.prev_pos = Some(chosen_pos.clone());
+            let last_evt = events_to_turn_event(&events);
+            return (build_game_state(state, team1, team2, last_evt), events);
+        } else {
+            // Dribble fail: possession loss + small foul chance
+            let foul_roll: f32 = rng.gen();
+            events.push(GameEvent::DribbleFail { player: pos_idx_pre });
+            if foul_roll < 0.05 * scale_pre {
+                events.push(GameEvent::TackleFoul { defender: pos_idx_pre, attacker: pos_idx_pre });
+            }
+            events.push(GameEvent::PossessionChange {
+                new_team: if state.team1_has_ball { team2.name.clone() } else { team1.name.clone() },
+            });
+            state.team1_has_ball = !state.team1_has_ball;
+            state.prev_pos = Some("g".to_string());
+            let last_evt = events_to_turn_event(&events);
+            return (build_game_state(state, team1, team2, last_evt), events);
+        }
+    }
+
+    // --- Determine if defence intercepts (guess-based) ---
     let intercept = if let Some(ref g) = human_guess {
         g == &chosen_pos
     } else {
@@ -300,6 +369,41 @@ pub fn step_turn(
 
     // All probabilities scaled by turn_duration_secs/60 so expected events per 90 min remain consistent.
     let scale = turn_duration_secs as f32 / 60.0;
+
+    // -----------------------------------------------------------------------
+    // Path-based interception: check intermediate zones on the xT grid.
+    // Low-xT (defensive) zones = higher interception chance.
+    // Uses a small per-zone multiplier (0.02) to keep rates realistic.
+    // -----------------------------------------------------------------------
+    {
+        let (start_zx, start_zy) = position_to_zone(&current_pos, state.team1_has_ball);
+        let start_zone = (start_zx * 3 + start_zy) as u8;
+        let end_zone   = (zx * 3 + zy) as u8;
+        let path = get_path_zones(start_zone, end_zone);
+        for &pz in &path {
+            let pz_col = (pz / 3) as usize;
+            let pz_row = (pz % 3) as usize;
+            let zone_xt = get_zone_xt(pz_col, pz_row);
+            // Inverted logic: defenders in low-xT zones are most effective
+            let interception_chance = (1.0 - zone_xt).clamp(0.1, 0.9) * 0.02 * scale;
+            let iroll: f32 = rng.gen();
+            if iroll < interception_chance {
+                let pos_idx_path = position_index(&chosen_pos);
+                events.push(GameEvent::Interception {
+                    defender: pos_idx_path,
+                    attacker: pos_idx_path,
+                    zone: pz,
+                });
+                events.push(GameEvent::PossessionChange {
+                    new_team: if state.team1_has_ball { team2.name.clone() } else { team1.name.clone() },
+                });
+                state.team1_has_ball = !state.team1_has_ball;
+                state.prev_pos = Some("g".to_string());
+                let last_evt = events_to_turn_event(&events);
+                return (build_game_state(state, team1, team2, last_evt), events);
+            }
+        }
+    }
 
     let pos_idx = position_index(&chosen_pos);
     let is_attacking_pos = matches!(chosen_pos.as_str(), "9" | "0" | "8" | "7");

@@ -1,4 +1,4 @@
-// === FINAL ENHANCEMENT: Multiplayer TCP Implementation + Full Game Test + README with Screenshots ===
+// === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 
 use std::collections::HashMap;
 use std::fs;
@@ -12,10 +12,11 @@ use rand::{Rng, SeedableRng};
 use futgame::config::{Difficulty, GameConfig};
 use futgame::events::GameEvent;
 use futgame::network::{self, NetworkMode, DEFAULT_PORT};
+use futgame::pitch::{pos_to_world, Position};
 use futgame::simulation::{step_turn, MatchState};
 use futgame::tactics::{Formation, Tactic};
 use futgame::team::{new_team, Team};
-use futgame::ui::renderer::render_tactical;
+use futgame::ui::renderer::{render_insights, render_tactical};
 use futgame::xg::adjacent_positions;
 
 #[derive(Parser, Debug)]
@@ -382,11 +383,21 @@ fn main() {
     let human_team_is_t1 = true;
 
     println!("\n{}", "🏁 KICK OFF!".bright_yellow().bold());
+    println!("{}", "Tips: enter 'm' to reposition players | 'p' to pause & view insights (max 2)".dimmed());
 
     let total_turns = config.total_turns();
     let halftime_turn = config.halftime_turn();
     let mut halftime_shown = false;
     let mut prev_minute = 0u32;
+    // Track floating-point world positions for each pos-key (updated on 'm' commands).
+    let mut world_positions: HashMap<String, Position> = {
+        let mut m = HashMap::new();
+        for pk in &["g","1","2","3","4","5","6","7","8","9","0"] {
+            m.insert(pk.to_string(), pos_to_world(pk));
+        }
+        m
+    };
+    let mut pauses_used: u32 = 0;
 
     for turn in 0..total_turns {
         let minute = config.turn_to_minute(turn);
@@ -402,71 +413,193 @@ fn main() {
         let is_human_turn = (human_team_is_t1 && state.team1_has_ball)
             || (!human_team_is_t1 && !state.team1_has_ball);
 
+        // Collect player movements ('m' command) for this turn.
+        let mut turn_movements: Vec<(String, String)> = Vec::new();
+        let mut turn_paused = false;
+
         let (human_pos, human_guess) = if is_human_turn {
             let adj = adjacent_positions(state.prev_pos.as_deref().unwrap_or("g"));
             println!("\n{} Your ball! {} mins", "▶".green(), minute);
             println!("Current pos: {}", state.prev_pos.as_deref().unwrap_or("g").yellow());
-            println!("Options: {}", adj.join(", ").cyan());
-            let mut chosen = prompt("Move to position: ");
-            while !adj.contains(&chosen.as_str()) {
-                println!("{}", "Invalid position. Please choose from the options above.".red());
-                chosen = prompt("Move to position: ");
-            }
-            let mv = chosen.clone();
+            println!("Options: {}  |  [m]=move players  [p]=pause insights", adj.join(", ").cyan());
 
-            // In multiplayer: send our move to the opponent so they can simulate identically.
-            if let Some(ref mut session) = mp_session {
-                let msg = futgame::network::NetMessage {
-                    turn,
-                    move_zone: chosen,
-                    guess_zone: None,
-                };
-                if let Err(e) = session.send(&msg) {
-                    eprintln!("Send error: {}", e);
+            // Collect optional 'm'/'p' commands before the position choice.
+            loop {
+                let raw = prompt("Move to position (or 'm'/'p'): ");
+                match raw.trim() {
+                    "p" => {
+                        if pauses_used < 2 {
+                            pauses_used += 1;
+                            turn_paused = true;
+                            println!("{}", format!("⏸  Pause {}/2 — showing insights…", pauses_used).yellow());
+                            render_insights(&team1, &team2, state.score1, state.score2, minute, pauses_used, &world_positions);
+                            prompt("Press Enter to continue...");
+                        } else {
+                            println!("{}", "No pauses remaining (max 2 used).".red());
+                        }
+                    }
+                    "m" => {
+                        // Show player list and allow role-limited repositioning.
+                        let pos_keys = ["g","1","2","3","4","5","6","7","8","9","0"];
+                        println!("{}", "  Player positions (enter 'from to' to reposition, or blank to skip):".cyan());
+                        let attacking_team = if human_team_is_t1 { &team1 } else { &team2 };
+                        for &pk in &pos_keys {
+                            if let Some(p) = attacking_team.player_at_pos(pk) {
+                                let wp = world_positions.get(pk).copied().unwrap_or_else(|| pos_to_world(pk));
+                                println!("    [{pk}] {name:22} ({role:12}) @ ({x:.1},{y:.1})m",
+                                    pk=pk, name=&p.name, role=format!("{:?}", p.role),
+                                    x=wp.x, y=wp.y);
+                            }
+                        }
+                        let max_moves = 2usize; // max repositioning per turn
+                        let mut moves_done = 0;
+                        loop {
+                            if moves_done >= max_moves { break; }
+                            let mv_input = prompt("  Reposition [from to] or blank to done: ");
+                            let parts: Vec<&str> = mv_input.split_whitespace().collect();
+                            if parts.is_empty() { break; }
+                            if parts.len() != 2 {
+                                println!("{}", "  Enter two position keys, e.g. '5 7'".red());
+                                continue;
+                            }
+                            let (from_pk, to_pk) = (parts[0], parts[1]);
+                            let valid_pks = ["g","1","2","3","4","5","6","7","8","9","0"];
+                            if !valid_pks.contains(&from_pk) || !valid_pks.contains(&to_pk) {
+                                println!("{}", "  Invalid position key.".red());
+                                continue;
+                            }
+                            // Update floating-point world position for the player at from_pk
+                            let target_world = pos_to_world(to_pk);
+                            world_positions.insert(from_pk.to_string(), target_world);
+                            turn_movements.push((from_pk.to_string(), to_pk.to_string()));
+                            println!("  ✓ Moved {} → {} ({:.1},{:.1})m",
+                                from_pk, to_pk, target_world.x, target_world.y);
+                            moves_done += 1;
+                        }
+                    }
+                    s if adj.contains(&s) => {
+                        let mv = s.to_string();
+
+                        // In multiplayer: send our move + movements + pause flag.
+                        if let Some(ref mut session) = mp_session {
+                            let movements_enc: Vec<String> = turn_movements.iter()
+                                .map(|(f, t)| format!("{}:{}", f, t))
+                                .collect();
+                            let msg = futgame::network::NetMessage {
+                                turn,
+                                move_zone: mv.clone(),
+                                guess_zone: None,
+                                movements: movements_enc,
+                                pause: turn_paused,
+                            };
+                            if let Err(e) = session.send(&msg) {
+                                eprintln!("Send error: {}", e);
+                            }
+                        }
+
+                        break (Some(mv), None);
+                    }
+                    _ => {
+                        println!("{}", "Invalid input. Choose from options above, or 'm'/'p'.".red());
+                    }
                 }
             }
-
-            (Some(mv), None)
         } else {
             let adj = adjacent_positions(state.prev_pos.as_deref().unwrap_or("g"));
             println!("\n{} Computer's ball! {} mins", "◀".red(), minute);
-            println!("Options: {}", adj.join(", ").cyan());
+            println!("Options: {}  |  [m]=move players  [p]=pause", adj.join(", ").cyan());
 
-            // In multiplayer: receive the opponent's actual move; in single-player: prompt for guess.
-            let (opponent_move, our_guess) = if let Some(ref mut session) = mp_session {
-                match session.recv() {
-                    Some(msg) => {
-                        println!("  [net] Opponent moved to zone {}", msg.move_zone);
-                        (Some(msg.move_zone), None)
+            // Allow 'p' or 'm' before guessing
+            loop {
+                let raw = prompt("Guess (or 'm'/'p'): ");
+                match raw.trim() {
+                    "p" => {
+                        if pauses_used < 2 {
+                            pauses_used += 1;
+                            turn_paused = true;
+                            println!("{}", format!("⏸  Pause {}/2 — showing insights…", pauses_used).yellow());
+                            render_insights(&team1, &team2, state.score1, state.score2, minute, pauses_used, &world_positions);
+                            prompt("Press Enter to continue...");
+                        } else {
+                            println!("{}", "No pauses remaining.".red());
+                        }
                     }
-                    None => {
-                        futgame::network::on_disconnect();
-                        break;
+                    "m" => {
+                        // Defensive repositioning (same UI as offensive)
+                        let pos_keys = ["g","1","2","3","4","5","6","7","8","9","0"];
+                        println!("{}", "  Player positions:".cyan());
+                        let defending_team = if human_team_is_t1 { &team1 } else { &team2 };
+                        for &pk in &pos_keys {
+                            if let Some(p) = defending_team.player_at_pos(pk) {
+                                let wp = world_positions.get(pk).copied().unwrap_or_else(|| pos_to_world(pk));
+                                println!("    [{pk}] {name:22} @ ({x:.1},{y:.1})m",
+                                    pk=pk, name=&p.name, x=wp.x, y=wp.y);
+                            }
+                        }
+                        let mv_input = prompt("  Reposition [from to] or blank to skip: ");
+                        let parts: Vec<&str> = mv_input.split_whitespace().collect();
+                        if parts.len() == 2 {
+                            let target_world = pos_to_world(parts[1]);
+                            world_positions.insert(parts[0].to_string(), target_world);
+                            turn_movements.push((parts[0].to_string(), parts[1].to_string()));
+                        }
+                    }
+                    // In multiplayer: receive the opponent's actual move; in single-player: prompt for guess.
+                    s if mp_session.is_some() || adj.contains(&s) => {
+                        let result = if let Some(ref mut session) = mp_session {
+                            match session.recv() {
+                                Some(msg) => {
+                                    println!("  [net] Opponent moved to zone {}", msg.move_zone);
+                                    // Decode their movements
+                                    for enc in &msg.movements {
+                                        let parts: Vec<&str> = enc.splitn(2, ':').collect();
+                                        if parts.len() == 2 {
+                                            turn_movements.push((parts[0].to_string(), parts[1].to_string()));
+                                        }
+                                    }
+                                    (None, Some(msg.move_zone))
+                                }
+                                None => {
+                                    futgame::network::on_disconnect();
+                                    // Use a placeholder to break the outer loop
+                                    (None, None)
+                                }
+                            }
+                        } else {
+                            let g = s.to_string();
+                            if adj.contains(&g.as_str()) {
+                                (None, Some(g))
+                            } else {
+                                println!("{}", "Invalid position. Please guess one of the options above.".red());
+                                continue;
+                            }
+                        };
+                        if result.0.is_none() && result.1.is_none() {
+                            // disconnect
+                            break (None, None);
+                        }
+                        break result;
+                    }
+                    _ => {
+                        println!("{}", "Invalid input.".red());
                     }
                 }
-            } else {
-                let mut guess = prompt("Guess where they'll move: ");
-                while !adj.contains(&guess.as_str()) {
-                    println!("{}", "Invalid position. Please guess one of the options above.".red());
-                    guess = prompt("Guess where they'll move: ");
-                }
-                (None, Some(guess))
-            };
-
-            // In multiplayer the opponent's move is the human_pos from their perspective.
-            // We pass it as human_guess so step_turn can check interception.
-            if opponent_move.is_some() {
-                (None, opponent_move)
-            } else {
-                (None, our_guess)
             }
         };
 
-        let (game_state, evts) = step_turn(&mut state, &mut team1, &mut team2, human_pos, human_guess, &mut rng, args.simple, config.turn_duration_secs, config.difficulty);
+        let movements_slice: Vec<(String, String)> = turn_movements;
+        let (game_state, evts) = step_turn(
+            &mut state, &mut team1, &mut team2,
+            human_pos, human_guess,
+            &mut rng,
+            args.simple, config.turn_duration_secs, config.difficulty,
+            &movements_slice,
+        );
 
         // Half-time: show once after the turn that completes minute 45
         if !halftime_shown && turn >= halftime_turn {
             show_halftime(&state, &team1, &team2);
+            render_insights(&team1, &team2, state.score1, state.score2, 45, pauses_used, &world_positions);
             prompt("Press Enter for second half...");
             println!("{}", "🏁 SECOND HALF!".bright_yellow().bold());
             halftime_shown = true;
@@ -498,10 +631,21 @@ fn main() {
                 GameEvent::Miss { .. } => {
                     println!("  😬 Off target!");
                 }
+                GameEvent::Dribble { .. } => {
+                    println!("  🔥 {}", "Brilliant dribble! Beat the defender!".bright_green());
+                }
+                GameEvent::DribbleFail { .. } => {
+                    println!("  😤 {}", "Dribble failed — lost the ball!".red());
+                }
+                GameEvent::Interception { zone, .. } => {
+                    println!("  ⚡ {}", format!("Intercepted in zone {}!", zone).bright_red());
+                }
                 _ => {}
             }
         }
     }
 
+    // Full-time insights
+    render_insights(&team1, &team2, state.score1, state.score2, 90, pauses_used, &world_positions);
     show_fulltime(&state, &team1, &team2);
 }

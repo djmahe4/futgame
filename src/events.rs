@@ -1,3 +1,4 @@
+// === ENHANCED: Floating-Point Position System (105x68m) + 'm' Per-Guess Movements + 'p' Pause + Dribble/Interception + Insights Viz ===
 // === OpenFootManager-inspired ===
 
 #[derive(Debug, Clone)]
@@ -14,6 +15,7 @@ pub enum GameEvent {
     PassFail { from: usize },
     Dribble { player: usize, xt_gain: f32 },
     DribbleFail { player: usize },
+    Interception { defender: usize, attacker: usize, zone: u8 },
     Tackle { defender: usize, attacker: usize },
     TackleFoul { defender: usize, attacker: usize },
     Cross { player: usize, success: bool },
