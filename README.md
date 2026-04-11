@@ -1,0 +1,422 @@
+# FutGame - Rust Football Simulator
+
+A fast, performant CLI football (soccer) simulator reimagined in Rust, inspired by OpenFootManager architecture, with xT (Expected Threat) integration and the original xG gameplay.
+
+## How to Play FutGame
+
+### Single Player
+```bash
+cargo run
+```
+Choose team → difficulty → play vs AI.
+
+### Multiplayer (TCP)
+**Host:**
+```bash
+cargo run -- --host
+```
+**Client (on another machine or terminal):**
+```bash
+cargo run -- --join 127.0.0.1
+```
+You can also use the interactive menu at startup — press **H** to host or **J** to join.
+
+### Screenshots / Example Output
+
+```
+╔═══════════════════════════════════╗
+║       ⚽  FutGame  ⚽              ║
+║   Rust CLI Football Simulator      ║
+╚═══════════════════════════════════╝
+
+Game Mode:
+  (S)ingle Player
+  (H)ost Multiplayer
+  (J)oin Multiplayer
+
+▶ Your ball! 12 mins
+Current pos: 5
+Options: 6, 7, 8, 9
+Move to position: 9
+  [state] turn=12 ball_zone=penalty_area | move 5 → 9
+  [xT] Vinicius Junior chose zone 9 (tactic boost 0.04)
+  💬 He's gone past two defenders!
+
+◀ Computer's ball! 15 mins
+Options: 5, 6, 7, g
+Guess where they'll move: 6
+  [state] turn=15 ball_zone=midfield | move 7 → 6
+  ↔ Real Madrid gain possession
+
+╔══════════════════════════════════════╗
+║  Real Madrid         1 - 0 Bayern    ║
+╚══════════════════════════════════════╝
+  ⚽ Vinicius Junior (Real Madrid) 38'
+```
+
+## Controls
+- Enter zone number (0-8, or `g`) when prompted
+- Guess opponent's zone when defending
+- Type exactly as shown — validation loops will re-prompt on errors
+
+## Features
+- Configurable turn duration (10s–60s)
+- xG + xT engine with probability scaling
+- Role-constrained movement
+- AI levels up to Insane (dual guess)
+- Deterministic multiplayer with shared RNG seed
+
+## Quick Start
+
+```bash
+cargo run
+```
+
+Or with options:
+```bash
+cargo run -- --simple          # Original xG-only mode (no xT)
+cargo run -- --team1 "Brazil" --team2 "Argentina"
+```
+
+## Architecture
+
+- `src/xg.rs` - Original xG logic (exact port from Python)
+- `src/xt.rs` - Expected Threat grid and xT→xG modifier
+- `src/pitch.rs` - Pitch zones
+- `src/player.rs` - Player struct and 60+ roles
+- `src/team.rs` - Team and formation management
+- `src/events.rs` - 25 game event types
+- `src/tactics.rs` - Formation and tactic modifiers
+- `src/simulation.rs` - Markov-chain match engine
+
+## Gameplay
+
+The game simulates a football match using position numbers:
+- `g` = Goalkeeper (xG: 0.01)
+- `1-4` = Defenders (xG: 0.05)
+- `5-8` = Midfielders (xG: 0.15)
+- `9,0` = Attackers (xG: 0.25)
+
+When your team has the ball, pick a position to pass/move to. The computer guesses where you'll go. If it guesses right, you lose possession.
+
+## xT Integration
+
+Expected Threat (xT) models how dangerous each zone of the pitch is. Higher xT zones (penalty area = ~0.35) provide a small bonus to xG calculations. This enriches buildup play without changing the core xG shot resolution.
+
+## Building
+
+```bash
+cargo build --release
+cargo test
+```
+
+## Recent Improvements (Copilot Refactor)
+
+- Halftime logic fixed to properly include the full 45th minute before break.
+- All event probabilities now scale correctly with turn_duration_secs for balanced matches at any granularity (10s–60s).
+- Input validation loops added for moves and guesses (no more silent defaults on typos).
+- Team selection menu is now deterministic (sorted alphabetically).
+- Squads restored to original 11 starters + appended generic substitutes (18+ players per team).
+- Substitutes now correctly initialize xG values to prevent runtime errors.
+- Lightweight xT influence and tactical logging added for better coach visibility.
+- AI difficulty levels implemented (Easy to Insane with dual-guess logic on Insane).
+
+## Artifacts & Test Results
+- All tests pass (`cargo test`): 3 doc-tests in config.rs (halftime_turn, total_turns, turn_to_minute)
+- Single-player game verified: balanced scorelines at both 60s and 10s turn durations
+- Multiplayer tested locally (two terminals): host and client produced identical tactical logs using shared RNG seed
+- Rendering verified identical on host and client side
+- No substitute/xG panics: all 18-player squads initialize xG correctly
+- Input validation re-prompts on invalid zone entries
+- Halftime triggers correctly after full first half (turn ≥ halftime_turn)
+- Team menu is deterministic (alphabetically sorted)
+
+## Advanced Commands: 'm' (Move Players) & 'p' (Pause Insights)
+
+### 'p' — Pause & Insights (max 2 per match)
+At any input prompt, type **`p`** to pause and display a full coach-level snapshot:
+
+```
+⏸  Pause 1/2 — showing insights…
+
+╔══════════════════════════════════════════════════════════════╗
+║                  📊  COACH INSIGHTS                         ║
+╚══════════════════════════════════════════════════════════════╝
+  Real Madrid 1-0 Bayern  [45']  pauses: 1/2
+
+  xT Heatmap  (col: own-goal→penalty box | row: L/C/R)
+  ┌──────────┬──────────┬──────────┬──────────┬──────────┬──────────┐
+ L │  .0.001  │  :0.008  │  -0.025  │  =0.060  │  #0.150  │  @0.320  │
+ C │  .0.002  │  :0.012  │  -0.035  │  =0.080  │  #0.200  │  @0.420  │
+ R │  .0.001  │  :0.008  │  -0.025  │  =0.060  │  #0.150  │  @0.320  │
+  └──────────┴──────────┴──────────┴──────────┴──────────┴──────────┘
+    col:  0-GK      1-Own     2-O.Mid   3-A.Mid   4-Final   5-Pen.box
+    key: .=low  :=low-med  -=med  ==med-high  #=high  @=max
+
+  ┌──────┬────────────────────────┬───────────────┬──────────────┬────────────────────┐
+  │ Pos  │ Name                   │ xG (cumul.)   │ xT (cumul.)  │ World pos (105×68) │
+  ├──────┼────────────────────────┼───────────────┼──────────────┼────────────────────┤
+  │ 9    │ Vinicius Junior        │        0.2620 │       0.0348 │ ( 82.0, 25.0)m      │
+  │ 0    │ Benzema                │        0.2580 │       0.0348 │ ( 82.0, 43.0)m      │
+  │ 7    │ Modric                 │        0.1510 │       0.0348 │ ( 65.0, 15.0)m      │
+  └──────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+The insights view is also shown automatically at **half-time** and **full-time**.
+
+### 'm' — Reposition Players (role-limited, up to 2 per turn)
+At any input prompt, type **`m`** to access the movement menu:
+
+```
+▶ Your ball! 32 mins
+Current pos: 5
+Options: 3, 4, 5, 6, 7  |  [m]=move players  [p]=pause insights
+Move to position (or 'm'/'p'): m
+
+  Player positions (enter 'from to' to reposition, or blank to skip):
+    [g]  Courtois              (Goalkeeper  ) @ (  5.0, 34.0)m
+    [5]  Kroos                 (Midfielder  ) @ ( 50.0, 22.0)m
+    [7]  Modric                (Midfielder  ) @ ( 65.0, 15.0)m
+    [9]  Vinicius Junior       (Striker     ) @ ( 82.0, 25.0)m
+  Reposition [from to] or blank to done: 5 7
+  ✓ Moved 5 → 7 (65.0,15.0)m
+  Reposition [from to] or blank to done:
+
+Move to position (or 'm'/'p'): 7
+  [xT] Kroos chose zone 7 (tactic boost 1.10)
+  [state] turn=32 ball_zone=7 | move 5 → 7
+```
+
+Movement to a higher-xT zone gives the team a small `total_xt` boost.
+
+### Dribble (same-position trigger)
+Choose the **same position you're in** to attempt a dribble:
+```
+Move to position: 9
+  [xT] Vinicius Junior chose zone 9 (tactic boost 1.30)
+  🔥 Brilliant dribble! Beat the defender!
+  [state] turn=58 ball_zone=9 | dribble → beat defender!
+```
+On failure:
+```
+  😤 Dribble failed — lost the ball!
+  ↔ Bayern gain possession
+```
+
+### Path-Based Interception
+Passes through defensive zones carry a small interception risk:
+```
+  ⚡ Intercepted in zone 3!
+  ↔ Bayern gain possession
+  [state] turn=21 ball_zone=0 | ⚡ intercepted by player 5
+```
+
+## Floating-Point Pitch System (105×68m)
+Every position key maps to a real-world coordinate:
+
+| Key | Role         |  x (m) |  y (m) |
+|-----|-------------|--------|--------|
+|  g  | Goalkeeper  |   5.0  |  34.0  |
+|  1  | Left Back   |  20.0  |  13.0  |
+|  2  | Right Back  |  20.0  |  55.0  |
+|  3  | CDM-L       |  32.0  |  20.0  |
+|  4  | CDM-R       |  32.0  |  48.0  |
+|  5  | CM-L        |  50.0  |  22.0  |
+|  6  | CM-R        |  50.0  |  46.0  |
+|  7  | AMF-L / LW  |  65.0  |  15.0  |
+|  8  | AMF-R / RW  |  65.0  |  53.0  |
+|  9  | Striker-L   |  82.0  |  25.0  |
+|  0  | Striker-R   |  82.0  |  43.0  |
+
+World positions are updated when you use 'm' to reposition players, and shown in the insights overlay.
+
+## Intelligent Defender Positioning, Role Interpolation & Formation-Aware Resets
+
+### Intelligent Defender Positioning
+Defenders (CentreBack, Libero, FullBack, DefensiveMidfielder) prefer to stay in the defensive half. When the ball is in columns 0-2 (own half), the `defenders_deep` flag is set and every turn shows:
+
+```
+  ⬇  Defenders dropped deep (ball in own half)
+```
+
+The path-based interception model (Bresenham on the 6×3 grid) gives defenders in low-xT zones a higher interception chance — the lower the zone xT, the harder it is to pass through.
+
+### Role-Specific Interpolation
+All 60+ player roles have a **favourite zone** (col, row on the 6×3 grid) and a **movement speed** (0.3–1.0 zones/turn). When a player repositions via 'm' or after a kick-off/goal reset, their floating-point position moves toward the target at that role's speed:
+
+```
+GK/ShotStopper:   speed 0.3  →  col 0 (own goal area, central)
+CentreBack:        speed 0.5  →  col 1 (own half, central)
+WingBack:          speed 0.85 →  col 2 (own midfield, flank)
+BoxToBoxMidfielder: speed 0.9 →  col 3 (attacking midfield)
+Striker:           speed 0.95 →  col 5 (penalty box, central)
+```
+
+Public API in `simulation.rs`:
+```rust
+pub fn role_favourite_zone(role: &PlayerRole) -> (usize, usize)
+pub fn role_movement_speed(role: &PlayerRole) -> f32
+pub fn role_interpolate(current: Position, target: Position, role: &PlayerRole, _secs: u32) -> Position
+```
+
+### Formation-Aware Scenario Resets
+After every goal and at half-time, world positions are reset to kickoff layout via:
+```rust
+pub fn kickoff_world_positions() -> HashMap<String, Position>
+```
+This maps all 11 position keys back to their standard 105×68m coordinates. Formations only affect xT multipliers — the base 4-4-2 xG allocation (`base_xg`) is never changed.
+
+### Per-Turn Movement Visualization
+
+After every turn, a compact ASCII 6×3 grid is printed:
+```
+  ┌────────────────────────────────────┐
+  │  Pitch [own-goal → penalty box]    │
+  ├──────┬──────┬──────┬──────┬──────┬──────┤
+  │  D   │  D   │  ·   │  B   │  ·   │  ·   │ L
+  │  D   │  D   │  p   │  p   │  ·   │  ·   │ C
+  │  ·   │  ·   │  ·   │  ·   │  ·   │  ·   │ R
+  └──────┴──────┴──────┴──────┴──────┴──────┘
+     c0    c1    c2  | c3    c4    c5
+    [own half]       | [attacking half]
+  ↑  Defenders holding line (mid-block)
+  Legend: B=ball  D=defender  p=player  ·=empty
+```
+
+### Commentary for Dribble & Interception
+Dribble/interception events now get dedicated commentary lines (no desc.txt modification needed):
+
+- **Dribble success**: *"Silky skills! The defender is left for dead!"*
+- **Dribble fail**: *"Too ambitious! The defender reads it perfectly."*
+- **Interception**: *"Brilliant defensive read — the pass is cut out!"*
+
+---
+
+## Enhanced Features: Ball Tracking, Intelligent Defenders, Role Interpolation & Multiplayer Sync
+
+### Ball Tracking (Floating-Point Position)
+The **Ball** has its own `Position { x: f32, y: f32 }` on the 105×68m pitch and is tracked every turn.
+
+- **Kickoff / Goal reset**: Ball snaps to the centre circle (`x=52.5, y=34.0`).
+- **Halftime reset**: Ball returns to centre after the half-time break.
+- **Per-turn update**: After each guess the ball's world position updates via `move_ball_with_action`.
+- **Visualization**: The `B` marker on the 6×3 ASCII grid shows the exact floating-point position of the ball, with coordinates printed beneath (`Ball: (x, y)m`).
+
+`move_ball_with_action` rules:
+| action   | ball moves to…                                  |
+|----------|-------------------------------------------------|
+| `"pass"` | destination player position                     |
+| `"shot"` | halfway between current ball and goal (`x=105`) |
+| `"dribble"` | weighted average of ball + 2× player pos     |
+| anything else | stays at player's feet                     |
+
+**Multiplayer sync**: `ball_x` / `ball_y` fields are included in every `NetMessage` so both host and client stay in sync.
+
+---
+
+### Intelligent Defender Positioning
+Defenders (pos-keys `g`, `1`, `2`, `3`, `4` in the 4-4-2 base) behave intelligently:
+
+- They **drop deep** when the ball is in their own half (col ≤ 2 of the 6-column grid), biasing toward back zones to block shot paths.
+- **Interception chance** is higher when defenders are near the ball path; low-xT zones raise the probability further.
+- The `defenders_deep` flag in `MatchState` is updated each turn and visualised in the ASCII grid footer.
+
+**ASCII screenshot 1 — Post-goal kickoff (Ball at centre)**:
+```
+  ┌────────────────────────────────────┐
+  │  Pitch [own-goal → penalty box]    │
+  ├──────┬──────┬──────┬──────┬──────┬──────┤
+  │  D   │  ·   │  ·   │  B   │  ·   │  ·   │ L
+  │  D   │  D   │  ·   │  ·   │  p   │  ·   │ C
+  │  ·   │  D   │  ·   │  ·   │  ·   │  ·   │ R
+  └──────┴──────┴──────┴──────┴──────┴──────┘
+     c0    c1    c2  | c3    c4    c5
+    [own half]       | [attacking half]
+  Ball: (52.5,34.0)m
+  ↑  Defenders holding line (mid-block)
+  Legend: B=ball  D=defender  p=player  ·=empty
+```
+
+---
+
+### Role-Specific Player Interpolation
+When the `m` (move) command is used, each player's floating-point position is interpolated toward the target zone based on their **role's movement speed**:
+
+| Role group        | Speed multiplier |
+|-------------------|-----------------|
+| Striker / Winger  | 1.0× (full step)|
+| Midfielder        | 0.9×            |
+| Defender / GK     | 0.7×            |
+
+`role_interpolate(current, target, role, turn_secs)` returns the new position after one turn's worth of movement.
+
+**ASCII screenshot 2 — 'm' movement with Ball trajectory**:
+```
+  ┌────────────────────────────────────┐
+  │  Pitch [own-goal → penalty box]    │
+  ├──────┬──────┬──────┬──────┬──────┬──────┤
+  │  D   │  D   │  ·   │  ·   │  ·   │  ·   │ L
+  │  D   │  D   │  ·   │  B   │  p   │  p   │ C
+  │  ·   │  ·   │  p   │  ·   │  ·   │  ·   │ R
+  └──────┴──────┴──────┴──────┴──────┴──────┘
+     c0    c1    c2  | c3    c4    c5
+    [own half]       | [attacking half]
+  Ball: (61.2,34.0)m
+  ↑  Defenders holding line (mid-block)
+  Legend: B=ball  D=defender  p=player  ·=empty
+```
+
+---
+
+### 'm' and 'p' Commands
+| Command | Description |
+|---------|-------------|
+| `m`     | Reposition up to 3 players before your guess. Enter `from:to` pairs (e.g. `5:9`). Ball follows the possessing player. |
+| `p`     | Pause and view full insights: formation, xG/xT table, **Ball location**, defender positions (max 2 pauses per match). |
+
+---
+
+### Formation-Aware Scenario Resets
+At **match start**, **halftime**, and **after every goal**:
+1. All player world positions reset to `kickoff_world_positions()` (442 base mapping).
+2. The **Ball** is placed at the centre circle (`x=52.5, y=34.0`).
+3. Role interpolation snaps each player toward their favourite zone.
+
+xG allocation always uses the **4-4-2 base** regardless of chosen formation; formations apply multipliers only.
+
+---
+
+### Pause Insights (with Ball)
+Pressing `p` (max 2× per match) shows:
+- Current formation + 4-4-2 xG base
+- Per-player xT/xG table
+- **Ball location** (floating-point + zone)
+- Defender deep/high block status
+- Event summary for the current half
+
+**ASCII screenshot 3 — Pause insights showing Ball position**:
+```
+  ══════════════════════════════════════════
+  📊  INSIGHTS  (minute 32)
+  ══════════════════════════════════════════
+  Formation: 4-4-2  |  Score: 1 - 0
+  Ball: zone 6  (62.4, 33.1)m  ← midfield
+  ──────────────────────────────────────────
+  Pos  Role         xG base   xT
+  g    Goalkeeper   0.01      0.00
+  1    Defender     0.03      0.01
+  ...
+  9    Striker      0.35      0.08
+  0    Striker      0.35      0.08
+  ──────────────────────────────────────────
+  Defenders: holding line (mid-block)
+  ══════════════════════════════════════════
+```
+
+---
+
+### Multiplayer Turn Alternation & Ball Sync
+- **Host** controls Team 1, **Client** controls Team 2.
+- Each `NetMessage` now carries `ball_x` and `ball_y` (f32) so ball position is kept in sync across the network.
+- `m` movements and `p` pauses are also synced via the `movements` and `pause` fields.
+- Host alternates turns with the client: host attacks on odd turns, client on even turns (or vice versa based on kick-off).
